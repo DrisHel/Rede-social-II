@@ -42,10 +42,6 @@ export class AuthController {
     }
 
     const user = await this.prisma.user.findUnique({ where: { email } });
-    // Mesma mensagem de erro tanto para "e-mail não existe" quanto para
-    // "senha errada" — de propósito. Se a mensagem fosse diferente,
-    // alguém tentando adivinhar contas descobriria quais e-mails existem
-    // no sistema (user enumeration).
     if (!user) {
       throw new InvalidCredentialsError();
     }

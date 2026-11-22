@@ -3,15 +3,12 @@ import type { PrismaClient } from '@prisma/client';
 import { AuthController } from './auth/AuthController.js';
 import { UserController } from './users/UserController.js';
 import { PostController } from './posts/PostController.js';
-import { requireAuth, requireOwnPost } from './auth/middleware.js';
+import { requireAuth, requireOwnComment, requireOwnPost } from './auth/middleware.js';
 import { upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler } from './shared/http.js';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
 
-// Rotas que servem HTML (EJS) e dependem de sessão — diferente de
-// routes.ts, que é só a API JSON de leitura. `requireAuth` (autenticação)
-// e `requireOwnPost` (autorização) ficam em src/auth/middleware.ts.
 export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage): Router {
   const router = Router();
   const authController = new AuthController(prisma);
@@ -57,11 +54,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     asyncHandler(async (req, res) => {
       try {
         const user = await authController.login(req.body);
-        // É isso que "loga" o usuário: guardar o id na sessão. A partir
-        // daqui, toda requisição desse navegador vai carregar
-        // `req.session.userId` (via cookie) até o logout ou o cookie expirar.
         req.session.userId = user.id; 
-        // req.session.user = user; // Ensure the `user` type matches the extended session type
         res.redirect('/');
       } catch (err) {
         if (err instanceof InvalidCredentialsError) {
@@ -112,12 +105,11 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
 
   router.post(
     '/posts',
-    requireAuth, // middlware
-    upload.single('image'), // middleware
+    requireAuth,
+    upload.single('image'),
     asyncHandler(async (req, res) => {
       try {
         let imageUrl: string | undefined;
-        // o parse do arquivo fica disponivel em req.file
         if (req.file) {
           imageUrl = await imageStorage.upload(req.file);
         }
@@ -156,11 +148,69 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     }),
   );
 
+  router.post(
+    '/posts/:id/comments/:commentId/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const result = await postController.likeComment(
+        req.session.userId!,
+        Number(req.params.id),
+        Number(req.params.commentId),
+      );
+      res.json(result);
+    }),
+  );
+
+  router.delete(
+    '/posts/:id/comments/:commentId/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const result = await postController.unlikeComment(
+        req.session.userId!,
+        Number(req.params.id),
+        Number(req.params.commentId),
+      );
+      res.json(result);
+    }),
+  );
+
   router.delete(
     '/posts/:id/like',
     requireAuth,
     asyncHandler(async (req, res) => {
       const result = await postController.unlike(req.session.userId!, Number(req.params.id));
+      res.json(result);
+    }),
+  );
+
+  router.get(
+    '/posts/:id/comments',
+    asyncHandler(async (req, res) => {
+      const comments = await postController.listComments(Number(req.params.id), req.session.userId);
+      res.json(comments);
+    }),
+  );
+
+  router.post(
+    '/posts/:id/comments',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const comment = await postController.createComment(
+        Number(req.params.id),
+        req.session.userId!,
+        req.body,
+      );
+      const commentCount = await prisma.comment.count({ where: { postId: comment.postId } });
+      res.status(201).json({ ...comment, likedByMe: false, commentCount });
+    }),
+  );
+
+  router.delete(
+    '/posts/:id/comments/:commentId',
+    requireAuth,
+    requireOwnComment(prisma),
+    asyncHandler(async (req, res) => {
+      const result = await postController.removeComment(Number(req.params.commentId));
       res.json(result);
     }),
   );

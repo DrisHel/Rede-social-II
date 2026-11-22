@@ -86,7 +86,7 @@ describe('curtidas em posts', () => {
 
   it('renderiza a página do post com a curtida atual do usuário', async () => {
     const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
-    await user.agent.post('/posts').type('form').send({ content: 'Post em detalhe' });
+    await user.agent.post('/posts').type('form').send({ content: 'Post em detalhe', tags: 'azul' });
     const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post em detalhe' } });
 
     await user.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
@@ -96,6 +96,10 @@ describe('curtidas em posts', () => {
     expect(res.text).toContain('Post em detalhe');
     expect(res.text).toContain('aria-pressed="true"');
     expect(res.text).toContain('<span data-like-count>1</span>');
+    expect(res.text).toContain('bg-blue-50');
+    expect(res.text).toContain('bg-blue-950');
+    expect(res.text).toContain('text-red-600');
+    expect(res.text).toContain('bg-emerald-100');
   });
 
   it('protege a página de post com autenticação', async () => {
@@ -157,7 +161,8 @@ describe('curtidas em posts', () => {
 
   it('mostra no feed a contagem e se o usuário atual curtiu o post', async () => {
     const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
-    await author.agent.post('/posts').type('form').send({ content: 'Post no feed' });
+    await author.agent.post('/posts').type('form').send({ content: 'Post no feed', tags: 'verde' });
+    await author.agent.post('/posts').type('form').send({ content: 'Post sem curtida' });
     const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post no feed' } });
 
     const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com', 'Leitora');
@@ -168,6 +173,335 @@ describe('curtidas em posts', () => {
     expect(feed.status).toBe(200);
     expect(feed.text).toContain('aria-pressed="true"');
     expect(feed.text).toContain('<span data-like-count>1</span>');
+    expect(feed.text).toContain('aria-pressed="false"');
+    expect(feed.text).toContain('bg-blue-50');
+    expect(feed.text).toContain('bg-blue-950');
+    expect(feed.text).toContain('bg-emerald-100');
+    expect(feed.text).toMatch(/aria-pressed="true"[^>]*class="[^"]*text-red-600/);
+    expect(feed.text).toMatch(/aria-pressed="false"[^>]*class="[^"]*text-blue-600/);
+  });
+});
+
+describe('comentários em posts', () => {
+  it('cria comentário autenticado e lista comentários sem exigir login', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
+    await author.agent.post('/posts').type('form').send({ content: 'Post comentável' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post comentável' } });
+
+    const create = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: '  Primeiro comentário  ' });
+    const list = await request(app).get(`/posts/${post.id}/comments`).set('Accept', 'application/json');
+
+    expect(create.status).toBe(201);
+    expect(create.body.content).toBe('Primeiro comentário');
+    expect(create.body.author).toEqual({ id: author.userId, name: 'Autora' });
+    expect(create.body.commentCount).toBe(1);
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].content).toBe('Primeiro comentário');
+  });
+
+  it('rejeita criação sem autenticação, conteúdo vazio e post inexistente', async () => {
+    const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await user.agent.post('/posts').type('form').send({ content: 'Post comentável' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post comentável' } });
+
+    const unauthenticated = await request(app)
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário anônimo' });
+    const empty = await user.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: '   ' });
+    const missingPost = await user.agent
+      .post('/posts/999/comments')
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário órfão' });
+
+    expect(unauthenticated.status).toBe(302);
+    expect(unauthenticated.headers.location).toBe('/login');
+    expect(empty.status).toBe(400);
+    expect(missingPost.status).toBe(404);
+  });
+
+  it('permite apagar apenas o próprio comentário', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post para comentário' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post para comentário' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário da autora' });
+    const commentId = created.body.id;
+    const other = await registerAndLogin(app, prisma, 'outra@exemplo.com');
+
+    const forbidden = await other.agent
+      .delete(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json');
+    expect(forbidden.status).toBe(403);
+    await expect(prisma.comment.findUnique({ where: { id: commentId } })).resolves.not.toBeNull();
+
+    const removed = await author.agent
+      .delete(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json');
+    expect(removed.status).toBe(200);
+    expect(removed.body).toEqual({ commentCount: 0 });
+    await expect(prisma.comment.findUnique({ where: { id: commentId } })).resolves.toBeNull();
+  });
+
+  it('renderiza comentários no feed e publica o script do formulário assíncrono', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
+    await author.agent.post('/posts').type('form').send({ content: 'Post no feed' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post no feed' } });
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com', 'Leitora');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+    await reader.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário visível' });
+
+    const feed = await reader.agent.get('/');
+    const script = await request(app).get('/assets/comments.js');
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('Comentário visível');
+    expect(feed.text).toContain('data-comment-form');
+    expect(script.status).toBe(200);
+    expect(script.text).toContain('event.preventDefault()');
+  });
+});
+
+describe('comentários em posts', () => {
+  it('cria comentário autenticado e lista comentários sem exigir login', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
+    await author.agent.post('/posts').type('form').send({ content: 'Post comentável' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post comentável' } });
+
+    const create = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: '  Primeiro comentário  ' });
+    const list = await request(app).get(`/posts/${post.id}/comments`).set('Accept', 'application/json');
+
+    expect(create.status).toBe(201);
+    expect(create.body.content).toBe('Primeiro comentário');
+    expect(create.body.author).toEqual({ id: author.userId, name: 'Autora' });
+    expect(create.body.commentCount).toBe(1);
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].content).toBe('Primeiro comentário');
+  });
+
+  it('rejeita criação sem autenticação, conteúdo vazio e post inexistente', async () => {
+    const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await user.agent.post('/posts').type('form').send({ content: 'Post comentável' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post comentável' } });
+
+    const unauthenticated = await request(app)
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário anônimo' });
+    const empty = await user.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: '   ' });
+    const missingPost = await user.agent
+      .post('/posts/999/comments')
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário órfão' });
+
+    expect(unauthenticated.status).toBe(302);
+    expect(unauthenticated.headers.location).toBe('/login');
+    expect(empty.status).toBe(400);
+    expect(missingPost.status).toBe(404);
+  });
+
+  it('permite apagar apenas o próprio comentário', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post para comentário' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post para comentário' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário da autora' });
+    const commentId = created.body.id;
+    const other = await registerAndLogin(app, prisma, 'outra@exemplo.com');
+
+    const forbidden = await other.agent
+      .delete(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json');
+    expect(forbidden.status).toBe(403);
+    await expect(prisma.comment.findUnique({ where: { id: commentId } })).resolves.not.toBeNull();
+
+    const removed = await author.agent
+      .delete(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json');
+    expect(removed.status).toBe(200);
+    expect(removed.body).toEqual({ commentCount: 0 });
+    await expect(prisma.comment.findUnique({ where: { id: commentId } })).resolves.toBeNull();
+  });
+
+  it('não permite apagar comentário por uma rota de outro post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post 1' });
+    await author.agent.post('/posts').type('form').send({ content: 'Post 2' });
+    const firstPost = await prisma.post.findFirstOrThrow({ where: { content: 'Post 1' } });
+    const secondPost = await prisma.post.findFirstOrThrow({ where: { content: 'Post 2' } });
+    const created = await author.agent
+      .post(`/posts/${firstPost.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário' });
+
+    const response = await author.agent
+      .delete(`/posts/${secondPost.id}/comments/${created.body.id}`)
+      .set('Accept', 'application/json');
+
+    expect(response.status).toBe(404);
+    await expect(prisma.comment.findUnique({ where: { id: created.body.id } })).resolves.not.toBeNull();
+  });
+
+  it('renderiza comentários no feed e publica o script do formulário assíncrono', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
+    await author.agent.post('/posts').type('form').send({ content: 'Post no feed' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post no feed' } });
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com', 'Leitora');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+    await reader.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário visível' });
+
+    const feed = await reader.agent.get('/');
+    const script = await request(app).get('/assets/comments.js');
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('Comentário visível');
+    expect(feed.text).toContain('data-comment-form');
+    expect(script.status).toBe(200);
+    expect(script.text).toContain('event.preventDefault()');
+  });
+});
+
+describe('curtidas em comentários', () => {
+  it('exige autenticação para curtir e descurtir comentários', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post comentável' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post comentável' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário' });
+    const commentId = created.body.id;
+
+    const like = await request(app)
+      .post(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    const unlike = await request(app)
+      .delete(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+
+    expect(like.status).toBe(302);
+    expect(like.headers.location).toBe('/login');
+    expect(unlike.status).toBe(302);
+    expect(unlike.headers.location).toBe('/login');
+  });
+
+  it('alterna sem duplicar curtidas e retorna a contagem atualizada', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post para comentário' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post para comentário' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário curtido' });
+    const commentId = created.body.id;
+
+    expect(created.body._count).toEqual({ commentLikes: 0 });
+    expect(created.body.likedByMe).toBe(false);
+
+    const firstLike = await author.agent
+      .post(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    expect(firstLike.status).toBe(200);
+    expect(firstLike.body).toEqual({ liked: true, likeCount: 1 });
+    expect(await prisma.commentLike.count({ where: { commentId } })).toBe(1);
+
+    const repeatedLike = await author.agent
+      .post(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    expect(repeatedLike.body).toEqual({ liked: true, likeCount: 1 });
+    expect(await prisma.commentLike.count({ where: { commentId } })).toBe(1);
+
+    const unlike = await author.agent
+      .delete(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    expect(unlike.status).toBe(200);
+    expect(unlike.body).toEqual({ liked: false, likeCount: 0 });
+    expect(await prisma.commentLike.count({ where: { commentId } })).toBe(0);
+  });
+
+  it('rejeita ids inválidos, comentários inexistentes e comentários de outro post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post 1' });
+    await author.agent.post('/posts').type('form').send({ content: 'Post 2' });
+    const firstPost = await prisma.post.findFirstOrThrow({ where: { content: 'Post 1' } });
+    const secondPost = await prisma.post.findFirstOrThrow({ where: { content: 'Post 2' } });
+    const created = await author.agent
+      .post(`/posts/${firstPost.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário' });
+
+    const invalidId = await author.agent
+      .post(`/posts/${firstPost.id}/comments/invalid/like`)
+      .set('Accept', 'application/json');
+    const missingComment = await author.agent
+      .post(`/posts/${firstPost.id}/comments/999/like`)
+      .set('Accept', 'application/json');
+    const wrongPost = await author.agent
+      .post(`/posts/${secondPost.id}/comments/${created.body.id}/like`)
+      .set('Accept', 'application/json');
+
+    expect(invalidId.status).toBe(400);
+    expect(missingComment.status).toBe(404);
+    expect(wrongPost.status).toBe(404);
+  });
+
+  it('mostra contagem e estado da curtida no feed e na página do post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post com comentário curtido' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com comentário curtido' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário com curtida' });
+
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+    await reader.agent
+      .post(`/posts/${post.id}/comments/${created.body.id}/like`)
+      .set('Accept', 'application/json');
+
+    const feed = await reader.agent.get('/');
+    const postPage = await reader.agent.get(`/posts/${post.id}`);
+    const likesScript = await request(app).get('/assets/likes.js');
+    const commentsScript = await request(app).get('/assets/comments.js');
+    const likeMarkup = new RegExp(
+      `data-comment-like-button[^>]*data-like-url="/posts/${post.id}/comments/${created.body.id}/like"[^>]*aria-pressed="true"`,
+    );
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('Comentário com curtida');
+    expect(feed.text).toMatch(likeMarkup);
+    expect(postPage.status).toBe(200);
+    expect(postPage.text).toMatch(likeMarkup);
+    expect(postPage.text).toContain('<span data-like-count>1</span>');
+    expect(likesScript.status).toBe(200);
+    expect(likesScript.text).toContain("document.addEventListener('click'");
+    expect(commentsScript.status).toBe(200);
+    expect(commentsScript.text).toContain('likeButton.dataset.likeUrl');
   });
 });
 

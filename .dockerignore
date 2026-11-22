@@ -1,6 +1,3 @@
-# Nada aqui entra no contexto de build: node_modules é reinstalado dentro da
-# imagem (para compilar os módulos nativos para Linux) e o resto é lixo de
-# execução local.
 node_modules
 dist
 coverage

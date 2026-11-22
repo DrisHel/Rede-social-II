@@ -17,6 +17,29 @@ afterAll(async () => {
 });
 
 describe('autenticação/autorização — acesso sem sessão', () => {
+  it('renderiza login e cadastro na paleta azul e usa azul-marinho na tela de erro', async () => {
+    const login = await request(app).get('/login');
+    const register = await request(app).get('/register');
+    const user = request.agent(app);
+    await user.post('/register').type('form').send({
+      name: 'Ana',
+      email: 'ana@exemplo.com',
+      password: 'senha123',
+    });
+    const error = await user.get('/posts/999').set('Accept', 'text/html');
+
+    expect(login.status).toBe(200);
+    expect(login.text).toContain('bg-blue-50');
+    expect(login.text).toContain('bg-blue-800');
+    expect(login.text).toContain('border-blue-200');
+    expect(register.status).toBe(200);
+    expect(register.text).toContain('bg-blue-50');
+    expect(register.text).toContain('bg-blue-800');
+    expect(error.status).toBe(404);
+    expect(error.text).toContain('bg-blue-50');
+    expect(error.text).toContain('text-blue-950');
+  });
+
   it('GET / redireciona para /login (requireAuth)', async () => {
     const res = await request(app).get('/');
 
@@ -48,7 +71,6 @@ describe('POST /register', () => {
     const user = await prisma.user.findUniqueOrThrow({ where: { email: 'ana@exemplo.com' } });
     expect(user.passwordHash).not.toBe('senha123');
 
-    // A sessão criada no registro já dá acesso à área logada.
     const feed = await agent.get('/');
     expect(feed.status).toBe(200);
     expect(feed.text).toContain('Ana');

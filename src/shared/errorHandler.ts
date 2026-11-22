@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import {
   DuplicateEmailError,
   DuplicateFollowError,
+  CommentNotFoundError,
   InvalidCredentialsError,
   PostNotFoundError,
   SelfFollowError,
@@ -16,18 +17,12 @@ const STATUS_BY_ERROR = new Map<Function, number>([
   [InvalidCredentialsError, 401],
   [UserNotFoundError, 404],
   [PostNotFoundError, 404],
+  [CommentNotFoundError, 404],
   [TagNotFoundError, 404],
   [DuplicateFollowError, 409],
   [DuplicateEmailError, 409],
 ]);
 
-// Os 4 parâmetros são obrigatórios: é assim que o Express reconhece uma
-// função como error handler (em vez de um middleware comum).
-//
-// Este app mistura páginas (EJS, para navegador) e uma API JSON
-// (/api/..., para o REST Client) — o mesmo erro de domínio (ex.:
-// PostNotFoundError) precisa virar uma página de erro num caso e um JSON
-// no outro. `req.accepts` olha o header `Accept` da requisição para decidir.
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   const status = STATUS_BY_ERROR.get(err.constructor) ?? 500;
 

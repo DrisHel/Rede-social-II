@@ -1,17 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
-import { PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError } from '../shared/errors.js';
+import { CommentNotFoundError, PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError } from '../shared/errors.js';
 
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
 
-  // `authorId` vem da SESSÃO (ver src/webRoutes.ts), nunca do corpo da
-  // requisição: é a autorização "você só pode postar como você mesmo" em
-  // código — antes da Aula 05 (sem login), qualquer chamador podia mandar
-  // qualquer `authorId` no body.
-  //
-  // 1:N (author) + N:N (tags) na mesma escrita: `connect` liga o post a um
-  // autor existente, `connectOrCreate` reaproveita tags já cadastradas ou
-  // cria as que ainda não existem — tudo em uma única operação do Prisma.
   async create(authorId: number, body: unknown, imageUrl?: string) {
     const { content, tags } = (body ?? {}) as { content?: unknown; tags?: unknown };
 
@@ -62,7 +54,15 @@ export class PostController {
       include: {
         author: true,
         tags: true,
-        _count: { select: { likes: true } },
+        comments: {
+          include: {
+            author: true,
+            _count: { select: { commentLikes: true } },
+            commentLikes: { where: { userId }, select: { userId: true } },
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+        _count: { select: { likes: true, comments: true } },
         likes: { where: { userId }, select: { userId: true } },
       },
     });
@@ -71,7 +71,64 @@ export class PostController {
     }
 
     const { likes, ...postData } = post;
-    return { ...postData, likedByMe: likes.length > 0 };
+    return {
+      ...postData,
+      comments: post.comments.map(({ commentLikes, ...comment }) => ({
+        ...comment,
+        likedByMe: commentLikes.length > 0,
+      })),
+      likedByMe: likes.length > 0,
+    };
+  }
+
+  async createComment(postId: number, authorId: number, body: unknown) {
+    const { content } = (body ?? {}) as { content?: unknown };
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      throw new ValidationError('"content" é obrigatório');
+    }
+    if (!Number.isInteger(postId) || postId <= 0) {
+      throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+    if (!Number.isInteger(authorId) || authorId <= 0) {
+      throw new ValidationError('O id do autor deve ser um número inteiro positivo');
+    }
+    await this.ensurePostExists(postId);
+
+    return this.prisma.comment.create({
+      data: { content: content.trim(), authorId, postId },
+      include: {
+        author: { select: { id: true, name: true } },
+        _count: { select: { commentLikes: true } },
+      },
+    });
+  }
+
+  async listComments(postId: number, userId?: number) {
+    if (!Number.isInteger(postId) || postId <= 0) {
+      throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+    await this.ensurePostExists(postId);
+    const comments = await this.prisma.comment.findMany({
+      where: { postId },
+      include: {
+        author: { select: { id: true, name: true } },
+        _count: { select: { commentLikes: true } },
+        ...(userId !== undefined
+          ? { commentLikes: { where: { userId }, select: { userId: true } } }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return comments.map(({ commentLikes = [], ...comment }) => ({
+      ...comment,
+      likedByMe: commentLikes.length > 0,
+    }));
+  }
+
+  async removeComment(commentId: number) {
+    const comment = await this.prisma.comment.delete({ where: { id: commentId } });
+    const commentCount = await this.prisma.comment.count({ where: { postId: comment.postId } });
+    return { commentCount };
   }
 
   async like(userId: number, postId: number) {
@@ -98,9 +155,43 @@ export class PostController {
     return { liked: false, likeCount };
   }
 
+  async likeComment(userId: number, postId: number, commentId: number) {
+    this.validateCommentLikeIds(userId, postId, commentId);
+    await this.ensureCommentExists(postId, commentId);
+
+    await this.prisma.commentLike.upsert({
+      where: { userId_commentId: { userId, commentId } },
+      create: { userId, commentId },
+      update: {},
+    });
+
+    const likeCount = await this.prisma.commentLike.count({ where: { commentId } });
+    return { liked: true, likeCount };
+  }
+
+  async unlikeComment(userId: number, postId: number, commentId: number) {
+    this.validateCommentLikeIds(userId, postId, commentId);
+    await this.ensureCommentExists(postId, commentId);
+
+    await this.prisma.commentLike.deleteMany({ where: { userId, commentId } });
+
+    const likeCount = await this.prisma.commentLike.count({ where: { commentId } });
+    return { liked: false, likeCount };
+  }
+
   private validateLikeIds(userId: number, postId: number): void {
     if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(postId) || postId <= 0) {
       throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+  }
+
+  private validateCommentLikeIds(userId: number, postId: number, commentId: number): void {
+    if (
+      !Number.isInteger(userId) || userId <= 0 ||
+      !Number.isInteger(postId) || postId <= 0 ||
+      !Number.isInteger(commentId) || commentId <= 0
+    ) {
+      throw new ValidationError('Os ids do post e do comentário devem ser números inteiros positivos');
     }
   }
 
@@ -108,6 +199,16 @@ export class PostController {
     const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
     if (!post) {
       throw new PostNotFoundError(postId);
+    }
+  }
+
+  private async ensureCommentExists(postId: number, commentId: number): Promise<void> {
+    const comment = await this.prisma.comment.findFirst({
+      where: { id: commentId, postId },
+      select: { id: true },
+    });
+    if (!comment) {
+      throw new CommentNotFoundError(commentId);
     }
   }
 
@@ -122,9 +223,6 @@ export class PostController {
     return tag.posts;
   }
 
-  // A checagem "é dono do post?" já aconteceu no middleware
-  // `requireOwnPost` (src/auth/middleware.ts) antes desta rota ser
-  // chamada — aqui só falta apagar.
   async remove(id: number): Promise<void> {
     await this.prisma.post.delete({ where: { id } });
   }
