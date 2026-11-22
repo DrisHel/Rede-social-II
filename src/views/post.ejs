@@ -99,7 +99,7 @@
             <li data-empty-comments class="text-sm text-blue-600 py-3">Nenhum comentário ainda. Seja o primeiro.</li>
           <% } %>
           <% comments.forEach((comment) => { %>
-            <li data-comment-id="<%= comment.id %>" class="py-3">
+            <li data-comment-id="<%= comment.id %>" data-comment-created-at="<%= new Date(comment.createdAt).toISOString() %>" class="py-3">
               <div class="flex items-center justify-between">
                 <p class="text-sm font-medium text-blue-950"><%= comment.author.name %></p>
                 <div class="flex items-center gap-2">

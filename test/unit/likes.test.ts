@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const script = await readFile(new URL('../../src/public/likes.js', import.meta.url), 'utf8');
 
 class FakeElement {
-  closest(_selector: string) {
+  closest(_selector: string): FakeElement | null {
     return this;
   }
 }
@@ -13,7 +13,7 @@ class FakeElement {
 class FakeButton extends FakeElement {
   disabled = false;
   title = 'Curtir';
-  dataset = { likeUrl: '/posts/1/like' };
+  dataset: { likeUrl: string; commentLikeButton?: string } = { likeUrl: '/posts/1/like' };
   attributes = new Map([['aria-pressed', 'false']]);
   classes = new Set(['text-blue-600']);
   status = { textContent: '' };
@@ -42,7 +42,47 @@ class FakeButton extends FakeElement {
   }
 }
 
-function createHarness(fetch: (url: string) => Promise<unknown>) {
+class FakeCommentItem extends FakeElement {
+  constructor(
+    readonly dataset: { commentId: string; commentCreatedAt: string },
+    readonly count: { textContent: string },
+  ) {
+    super();
+  }
+
+  querySelector(selector: string) {
+    return selector === '[data-like-count]' ? this.count : null;
+  }
+}
+
+class FakeCommentList extends FakeElement {
+  comments: FakeCommentItem[] = [];
+
+  querySelectorAll(_selector: string) {
+    return this.comments;
+  }
+
+  append(comment: FakeCommentItem) {
+    const index = this.comments.indexOf(comment);
+    if (index >= 0) this.comments.splice(index, 1);
+    this.comments.push(comment);
+  }
+}
+
+class FakeCommentButton extends FakeButton {
+  constructor(private readonly commentList: FakeCommentList) {
+    super();
+    this.dataset.commentLikeButton = '';
+    this.dataset.likeUrl = '/posts/1/comments/3/like';
+    this.count.textContent = '0';
+  }
+
+  closest(selector: string): FakeElement | null {
+    return selector === '[data-comment-list]' ? this.commentList : super.closest(selector);
+  }
+}
+
+function createHarness(fetch: (url: string) => Promise<unknown>, button = new FakeButton()) {
   let clickHandler: ((event: { target: FakeButton }) => Promise<void>) | undefined;
   const eventRoot = {
     addEventListener(event: string, handler: (event: { target: FakeButton }) => Promise<void>) {
@@ -53,10 +93,11 @@ function createHarness(fetch: (url: string) => Promise<unknown>) {
     document: { querySelector: () => eventRoot },
     Element: FakeElement,
     HTMLButtonElement: FakeButton,
+    HTMLUListElement: FakeCommentList,
     fetch,
   });
   if (!clickHandler) throw new Error('Like click handler was not registered');
-  return { button: new FakeButton(), click: clickHandler };
+  return { button, click: clickHandler };
 }
 
 describe('optimistic likes', () => {
@@ -110,5 +151,38 @@ describe('optimistic likes', () => {
     expect(button.classes.has('text-blue-600')).toBe(true);
     expect(button.status.textContent).not.toBe('');
     expect(button.disabled).toBe(false);
+  });
+
+  it('reordena comentários quando uma curtida altera a pontuação', async () => {
+    const list = new FakeCommentList();
+    const button = new FakeCommentButton(list);
+    const popularComment = new FakeCommentItem(
+      { commentId: '20', commentCreatedAt: '2026-01-01T10:00:00.000Z' },
+      { textContent: '2' },
+    );
+    const olderUnlikedComment = new FakeCommentItem(
+      { commentId: '1', commentCreatedAt: '2026-01-02T10:00:00.000Z' },
+      { textContent: '0' },
+    );
+    const targetComment = new FakeCommentItem(
+      { commentId: '3', commentCreatedAt: '2026-01-03T10:00:00.000Z' },
+      button.count,
+    );
+    list.comments = [popularComment, olderUnlikedComment, targetComment];
+    let resolveFetch: ((response: unknown) => void) | undefined;
+    const { click } = createHarness(() => new Promise((resolve) => {
+      resolveFetch = resolve;
+    }), button);
+
+    const request = click({ target: button });
+
+    expect(list.comments.map((comment) => comment.dataset.commentId)).toEqual(['20', '3', '1']);
+    resolveFetch?.({
+      ok: true,
+      redirected: false,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ liked: true, likeCount: 1 }),
+    });
+    await request;
   });
 });

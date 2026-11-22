@@ -8,6 +8,7 @@ function setCommentCount(section, count) {
 function createCommentElement(comment, currentUserId) {
   const item = document.createElement('li');
   item.dataset.commentId = String(comment.id);
+  item.dataset.commentCreatedAt = new Date(comment.createdAt).toISOString();
   item.className = 'py-2';
 
   const header = document.createElement('div');

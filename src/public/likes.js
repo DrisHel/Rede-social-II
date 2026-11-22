@@ -9,6 +9,25 @@ function setLikeState(button, countElement, icon, liked, likeCount) {
   button.classList.toggle('text-blue-600', !liked);
 }
 
+function sortCommentList(button) {
+  if (button.dataset.commentLikeButton === undefined) return;
+  const list = button.closest('[data-comment-list]');
+  if (!(list instanceof HTMLUListElement)) return;
+
+  const comments = Array.from(list.querySelectorAll('li[data-comment-id]'));
+  comments.sort((first, second) => {
+    const firstCount = Number(first.querySelector('[data-like-count]').textContent);
+    const secondCount = Number(second.querySelector('[data-like-count]').textContent);
+    const likeDifference = secondCount - firstCount;
+    if (likeDifference !== 0) return likeDifference;
+
+    const dateDifference = (first.dataset.commentCreatedAt || '')
+      .localeCompare(second.dataset.commentCreatedAt || '');
+    return dateDifference || Number(first.dataset.commentId) - Number(second.dataset.commentId);
+  });
+  comments.forEach((comment) => list.append(comment));
+}
+
 likeEventRoot.addEventListener('click', async (event) => {
   if (!(event.target instanceof Element)) return;
   const button = event.target.closest('[data-like-button]');
@@ -29,6 +48,7 @@ likeEventRoot.addEventListener('click', async (event) => {
   button.disabled = true;
   status.textContent = '';
   setLikeState(button, countElement, icon, optimisticLiked, optimisticCount);
+  sortCommentList(button);
 
   try {
     const response = await fetch(button.dataset.likeUrl, {
@@ -55,8 +75,10 @@ likeEventRoot.addEventListener('click', async (event) => {
       throw new Error('O servidor retornou uma resposta inválida para a curtida.');
     }
     setLikeState(button, countElement, icon, result.liked, result.likeCount);
+    sortCommentList(button);
   } catch (error) {
     setLikeState(button, countElement, icon, liked, currentCount);
+    sortCommentList(button);
     status.textContent = error instanceof Error ? error.message : 'Não foi possível atualizar a curtida.';
   } finally {
     button.disabled = false;

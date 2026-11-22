@@ -121,7 +121,11 @@ export class UserController {
             _count: { select: { commentLikes: true } },
             commentLikes: { where: { userId }, select: { userId: true } },
           },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          orderBy: [
+            { commentLikes: { _count: 'desc' } },
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ],
         },
         _count: { select: { likes: true, comments: true } },
         likes: { where: { userId }, select: { userId: true } },

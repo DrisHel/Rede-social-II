@@ -297,6 +297,48 @@ describe('comentários em posts', () => {
     expect(list.body[0].content).toBe('Primeiro comentário');
   });
 
+  it('ordena comentários por curtidas no endpoint, na página do post e no feed', async () => {
+    const publisher = await registerAndLogin(app, prisma, 'publisher@exemplo.com', 'Publicadora');
+    const reader = await registerAndLogin(app, prisma, 'reader@exemplo.com', 'Leitora');
+    const firstCommenter = await registerAndLogin(app, prisma, 'first-commenter@exemplo.com', 'Primeira');
+    const secondCommenter = await registerAndLogin(app, prisma, 'second-commenter@exemplo.com', 'Segunda');
+    const thirdCommenter = await registerAndLogin(app, prisma, 'third-commenter@exemplo.com', 'Terceira');
+    await publisher.agent.post('/posts').type('form').send({ content: 'Post com comentários ordenados' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com comentários ordenados' } });
+
+    const first = await firstCommenter.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Sem curtidas' });
+    const second = await secondCommenter.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Mais curtido' });
+    const third = await thirdCommenter.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Uma curtida' });
+
+    await reader.agent.post('/follow').type('form').send({ targetId: publisher.userId });
+    await reader.agent.post(`/posts/${post.id}/comments/${second.body.id}/like`);
+    await firstCommenter.agent.post(`/posts/${post.id}/comments/${second.body.id}/like`);
+    await publisher.agent.post(`/posts/${post.id}/comments/${third.body.id}/like`);
+
+    const comments = await request(app).get(`/posts/${post.id}/comments`);
+    expect(comments.body.map((comment: { content: string }) => comment.content))
+      .toEqual(['Mais curtido', 'Uma curtida', 'Sem curtidas']);
+
+    const postPage = await publisher.agent.get(`/posts/${post.id}`);
+    const feedPage = await reader.agent.get('/');
+    for (const page of [postPage, feedPage]) {
+      const positions = ['Mais curtido', 'Uma curtida', 'Sem curtidas']
+        .map((content) => page.text.indexOf(`>${content}</p>`));
+      expect(positions.every((position) => position >= 0)).toBe(true);
+      expect(positions[0]).toBeLessThan(positions[1]);
+      expect(positions[1]).toBeLessThan(positions[2]);
+    }
+  });
+
   it('rejeita criação sem autenticação, conteúdo vazio e post inexistente', async () => {
     const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
     await user.agent.post('/posts').type('form').send({ content: 'Post comentável' });

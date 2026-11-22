@@ -92,7 +92,7 @@
         <% post.comments.forEach((comment) => { %>
           <% const commentLikedByMe = comment.likedByMe ?? false; %>
           <% const commentLikeCount = comment._count?.commentLikes ?? 0; %>
-          <li data-comment-id="<%= comment.id %>" class="py-2">
+          <li data-comment-id="<%= comment.id %>" data-comment-created-at="<%= new Date(comment.createdAt).toISOString() %>" class="py-2">
             <div class="flex items-center justify-between gap-3">
               <p class="text-xs font-medium text-blue-950"><%= comment.author.name %></p>
               <div class="flex items-center gap-2">
