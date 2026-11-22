@@ -137,7 +137,8 @@ describe('POST /posts (autenticado)', () => {
     expect(detail.text).toContain('https://fake-bucket.test/primeira.png');
     expect(detail.text).toContain('https://fake-bucket.test/segunda.png');
     expect(carouselScript.status).toBe(200);
-    expect(carouselScript.text).toContain('currentIndex = (index + slides.length) % slides.length');
+    expect(carouselScript.text).toContain("feedList?.addEventListener('click'");
+    expect(carouselScript.text).toContain('(Math.max(currentIndex, 0) + direction + slides.length) % slides.length');
   });
 
   it('mantém a exibição atual para posts com zero ou uma foto', async () => {
@@ -592,8 +593,10 @@ describe('curtidas em comentários', () => {
     expect(postPage.text).toMatch(likeMarkup);
     expect(postPage.text).toContain('<span data-like-count>1</span>');
     expect(likesScript.status).toBe(200);
-    expect(likesScript.text).toContain("document.addEventListener('click'");
+    expect(likesScript.text).toContain("eventRoot.addEventListener('click'");
     expect(commentsScript.status).toBe(200);
+    expect(commentsScript.text).toContain("eventRoot.addEventListener('submit'");
+    expect(commentsScript.text).toContain("eventRoot.addEventListener('click'");
     expect(commentsScript.text).toContain('likeButton.dataset.likeUrl');
   });
 });

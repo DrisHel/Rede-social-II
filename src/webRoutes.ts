@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { AuthController } from './auth/AuthController.js';
-import { UserController } from './users/UserController.js';
+import { DEFAULT_FEED_PAGE_SIZE, UserController } from './users/UserController.js';
 import { PostController } from './posts/PostController.js';
 import { requireAuth, requireOwnComment, requireOwnPost } from './auth/middleware.js';
 import { MAX_POST_IMAGES, upload } from './uploads/upload.js';
@@ -77,12 +77,18 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     requireAuth,
     asyncHandler(async (req, res) => {
       const currentUserId = req.session.userId!;
-      const [currentUser, feed, others] = await Promise.all([
+      const [currentUser, page, others] = await Promise.all([
         userController.get(currentUserId),
-        userController.feed(currentUserId),
+        userController.feedPage(currentUserId, undefined, DEFAULT_FEED_PAGE_SIZE),
         userController.listOthers(currentUserId),
       ]);
-      res.render('feed', { currentUser, feed, others });
+      res.render('feed', {
+        currentUser,
+        feed: page.posts,
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        others,
+      });
     }),
   );
 
