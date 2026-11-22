@@ -28,14 +28,25 @@
             <input type="text" name="tags" placeholder="prisma, orm" class="mt-1 w-full border border-blue-200 rounded px-3 py-2 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100" />
           </label>
           <label class="text-sm text-blue-800">
-            Imagem (opcional)
-            <input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="mt-1 w-full text-sm" />
+            Fotos (opcional, até 5)
+            <input
+              type="file"
+              name="images"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              data-post-images-input
+              data-max-files="5"
+              class="mt-1 w-full text-sm"
+            />
           </label>
+          <ul data-post-image-list class="flex flex-col gap-1 text-sm text-blue-700"></ul>
+          <p data-post-image-status role="status" aria-live="polite" class="text-sm text-red-600"></p>
           <button type="submit" class="bg-blue-800 text-white rounded px-3 py-2 mt-2 hover:bg-blue-900">
             Publicar
           </button>
         </form>
       </div>
     </main>
+    <script src="/assets/postImages.js" defer></script>
   </body>
 </html>

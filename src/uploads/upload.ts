@@ -1,6 +1,7 @@
 import multer from 'multer';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+export const MAX_POST_IMAGES = 5;
 
 export const upload = multer({
   storage: multer.memoryStorage(),

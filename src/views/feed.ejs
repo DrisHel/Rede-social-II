@@ -51,8 +51,16 @@
             </header>
             <a href="/posts/<%= post.id %>" class="block group">
               <p class="text-blue-900 mt-2 group-hover:text-blue-950"><%= post.content %></p>
-              <% if (post.imageUrl) { %>
-                <img src="<%= post.imageUrl %>" alt="" class="mt-3 rounded-lg max-h-80 w-full object-cover" />
+              <% if (post.images.length > 0) { %>
+                <div class="mt-3 grid grid-cols-2 gap-2">
+                  <% post.images.forEach((image) => { %>
+                    <img
+                      src="<%= image.url %>"
+                      alt=""
+                      class="<%= post.images.length === 1 ? 'col-span-2 max-h-80' : 'h-40' %> rounded-lg w-full object-cover"
+                    />
+                  <% }) %>
+                </div>
               <% } %>
             </a>
             <% if (post.tags.length > 0) { %>

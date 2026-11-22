@@ -61,6 +61,7 @@ export class UserController {
       include: {
         author: true,
         tags: true,
+        images: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
         comments: {
           include: {
             author: { select: { id: true, name: true } },
