@@ -40,7 +40,7 @@ services:
       CHOKIDAR_INTERVAL: "${CHOKIDAR_INTERVAL:-300}"
 
     ports:
-      - "${PORT:-3003}:3003"
+      - "3003:3003"
 
     volumes:
       # 1) O projeto inteiro, para o watch enxergar as alterações.
