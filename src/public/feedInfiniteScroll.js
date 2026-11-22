@@ -1,11 +1,11 @@
-const feedList = document.querySelector('[data-feed-list]');
+const infiniteFeedList = document.querySelector('[data-feed-list]');
 const sentinel = document.querySelector('[data-feed-sentinel]');
 const loading = document.querySelector('[data-feed-loading]');
 const errorMessage = document.querySelector('[data-feed-error]');
 const retryButton = document.querySelector('[data-feed-retry]');
 const endMessage = document.querySelector('[data-feed-end]');
 
-if (feedList && sentinel && loading && errorMessage && retryButton && endMessage) {
+if (infiniteFeedList && sentinel && loading && errorMessage && retryButton && endMessage) {
   let isLoading = false;
   const observer = new IntersectionObserver((entries) => {
     if (entries.some((entry) => entry.isIntersecting)) {
@@ -14,9 +14,9 @@ if (feedList && sentinel && loading && errorMessage && retryButton && endMessage
   }, { rootMargin: '300px' });
 
   async function loadNextPage() {
-    if (isLoading || feedList.dataset.hasMore !== 'true') return;
+    if (isLoading || infiniteFeedList.dataset.hasMore !== 'true') return;
 
-    const cursor = feedList.dataset.nextCursor;
+    const cursor = infiniteFeedList.dataset.nextCursor;
     if (!cursor) {
       errorMessage.hidden = false;
       observer.unobserve(sentinel);
@@ -53,15 +53,15 @@ if (feedList && sentinel && loading && errorMessage && retryButton && endMessage
 
       const template = document.createElement('template');
       template.innerHTML = result.html;
-      feedList.append(template.content);
+      infiniteFeedList.append(template.content);
       document.querySelector('[data-feed-empty]')?.remove();
-      feedList.dataset.hasMore = String(result.hasMore);
-      feedList.dataset.nextCursor = result.nextCursor === null ? '' : String(result.nextCursor);
+      infiniteFeedList.dataset.hasMore = String(result.hasMore);
+      infiniteFeedList.dataset.nextCursor = result.nextCursor === null ? '' : String(result.nextCursor);
       loadedPage = true;
 
       if (!result.hasMore) {
         observer.disconnect();
-        if (feedList.querySelector('[data-post-id]')) endMessage.hidden = false;
+        if (infiniteFeedList.querySelector('[data-post-id]')) endMessage.hidden = false;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível carregar mais publicações.';
@@ -71,7 +71,7 @@ if (feedList && sentinel && loading && errorMessage && retryButton && endMessage
     } finally {
       loading.hidden = true;
       isLoading = false;
-      if (loadedPage && feedList.dataset.hasMore === 'true') {
+      if (loadedPage && infiniteFeedList.dataset.hasMore === 'true') {
         window.requestAnimationFrame(() => {
           if (sentinel.getBoundingClientRect().top <= window.innerHeight + 300) loadNextPage();
         });
@@ -84,7 +84,7 @@ if (feedList && sentinel && loading && errorMessage && retryButton && endMessage
     observer.observe(sentinel);
   });
 
-  if (feedList.dataset.hasMore === 'true') {
+  if (infiniteFeedList.dataset.hasMore === 'true') {
     observer.observe(sentinel);
   }
 }

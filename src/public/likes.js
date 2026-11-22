@@ -1,6 +1,6 @@
-const eventRoot = document.querySelector('[data-feed-list]') || document;
+const likeEventRoot = document.querySelector('[data-feed-list]') || document;
 
-eventRoot.addEventListener('click', async (event) => {
+likeEventRoot.addEventListener('click', async (event) => {
   if (!(event.target instanceof Element)) return;
   const button = event.target.closest('[data-like-button]');
   if (!(button instanceof HTMLButtonElement) || button.disabled) return;

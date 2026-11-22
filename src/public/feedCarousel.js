@@ -1,6 +1,6 @@
-const feedList = document.querySelector('[data-feed-list]');
+const carouselFeedList = document.querySelector('[data-feed-list]');
 
-feedList?.addEventListener('click', (event) => {
+carouselFeedList?.addEventListener('click', (event) => {
   if (!(event.target instanceof Element)) return;
   const button = event.target.closest('[data-carousel-prev], [data-carousel-next]');
   if (!(button instanceof HTMLButtonElement)) return;

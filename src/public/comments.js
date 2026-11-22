@@ -78,9 +78,9 @@ function createCommentElement(comment, currentUserId) {
   return item;
 }
 
-const eventRoot = document.querySelector('[data-feed-list]') || document;
+const commentEventRoot = document.querySelector('[data-feed-list]') || document;
 
-eventRoot.addEventListener('submit', async (event) => {
+commentEventRoot.addEventListener('submit', async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || !form.matches('[data-comment-form]')) return;
 
@@ -128,7 +128,7 @@ eventRoot.addEventListener('submit', async (event) => {
   }
 });
 
-eventRoot.addEventListener('click', async (event) => {
+commentEventRoot.addEventListener('click', async (event) => {
   if (!(event.target instanceof Element)) return;
   const button = event.target.closest('[data-delete-comment]');
   if (!(button instanceof HTMLButtonElement) || button.disabled) return;
