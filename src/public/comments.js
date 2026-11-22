@@ -78,74 +78,86 @@ function createCommentElement(comment, currentUserId) {
   return item;
 }
 
-document.querySelectorAll('[data-comment-form]').forEach((form) => {
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const section = form.closest('[data-comment-section]') || form.parentElement.parentElement;
-    const postId = form.action.match(/\/posts\/(\d+)\/comments/)?.[1];
-    const field = form.elements.namedItem('content');
-    const status = section.querySelector('[data-comment-status]');
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (!postId || !(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return;
+const commentEventRoot = document.querySelector('[data-feed-list]') || document;
 
-    submitButton.disabled = true;
-    status.textContent = '';
-    try {
-      const response = await fetch(`/posts/${postId}/comments`, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ content: field.value }),
-      });
-      const contentType = response.headers.get('content-type') || '';
-      if (response.redirected) throw new Error('Sua sessão expirou. Entre novamente para comentar.');
-      const result = contentType.includes('application/json') ? await response.json() : null;
-      if (!response.ok || !result) {
-        throw new Error(result?.error || 'Não foi possível enviar o comentário.');
-      }
+commentEventRoot.addEventListener('submit', async (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.matches('[data-comment-form]')) return;
 
-      const list = section.querySelector('[data-comment-list]');
-      list.append(createCommentElement(result, Number(section.dataset.currentUserId)));
-      const emptyMessage = list.querySelector('[data-empty-comments]');
-      emptyMessage?.remove();
-      setCommentCount(section, result.commentCount);
-      form.reset();
-    } catch (error) {
-      status.textContent = error instanceof Error ? error.message : 'Não foi possível enviar o comentário.';
-    } finally {
-      submitButton.disabled = false;
+  event.preventDefault();
+  const section = form.closest('[data-comment-section]');
+  const postId = form.action.match(/\/posts\/(\d+)\/comments/)?.[1];
+  const field = form.elements.namedItem('content');
+  const status = section?.querySelector('[data-comment-status]');
+  const submitButton = form.querySelector('button[type="submit"]');
+  const list = section?.querySelector('[data-comment-list]');
+  if (
+    !section
+    || !postId
+    || !(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)
+    || !(status instanceof HTMLElement)
+    || !(submitButton instanceof HTMLButtonElement)
+    || !(list instanceof HTMLUListElement)
+  ) return;
+
+  submitButton.disabled = true;
+  status.textContent = '';
+  try {
+    const response = await fetch(`/posts/${postId}/comments`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ content: field.value }),
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (response.redirected) throw new Error('Sua sessão expirou. Entre novamente para comentar.');
+    const result = contentType.includes('application/json') ? await response.json() : null;
+    if (!response.ok || !result) {
+      throw new Error(result?.error || 'Não foi possível enviar o comentário.');
     }
-  });
+
+    list.append(createCommentElement(result, Number(section.dataset.currentUserId)));
+    const emptyMessage = list.querySelector('[data-empty-comments]');
+    emptyMessage?.remove();
+    setCommentCount(section, result.commentCount);
+    form.reset();
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : 'Não foi possível enviar o comentário.';
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
-document.querySelectorAll('[data-comment-section]').forEach((section) => {
-  section.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-delete-comment]');
-    if (!button || button.disabled) return;
+commentEventRoot.addEventListener('click', async (event) => {
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest('[data-delete-comment]');
+  if (!(button instanceof HTMLButtonElement) || button.disabled) return;
 
-    const commentId = button.dataset.commentId;
-    const postId = section.dataset.postId;
-    const status = section.querySelector('[data-comment-status]');
-    button.disabled = true;
-    status.textContent = '';
-    try {
-      const response = await fetch(`/posts/${postId}/comments/${commentId}`, {
-        method: 'DELETE',
-        headers: { Accept: 'application/json' },
-        credentials: 'same-origin',
-      });
-      const contentType = response.headers.get('content-type') || '';
-      if (response.redirected) throw new Error('Sua sessão expirou. Entre novamente para apagar comentários.');
-      const result = contentType.includes('application/json') ? await response.json() : null;
-      if (!response.ok || !result) {
-        throw new Error(result?.error || 'Não foi possível apagar o comentário.');
-      }
+  const section = button.closest('[data-comment-section]');
+  const commentId = button.dataset.commentId;
+  const postId = section?.dataset.postId;
+  const status = section?.querySelector('[data-comment-status]');
+  if (!section || !commentId || !postId || !(status instanceof HTMLElement)) return;
 
-      button.closest('[data-comment-id]').remove();
-      setCommentCount(section, result.commentCount);
-    } catch (error) {
-      status.textContent = error instanceof Error ? error.message : 'Não foi possível apagar o comentário.';
-      button.disabled = false;
+  button.disabled = true;
+  status.textContent = '';
+  try {
+    const response = await fetch(`/posts/${postId}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (response.redirected) throw new Error('Sua sessão expirou. Entre novamente para apagar comentários.');
+    const result = contentType.includes('application/json') ? await response.json() : null;
+    if (!response.ok || !result) {
+      throw new Error(result?.error || 'Não foi possível apagar o comentário.');
     }
-  });
+
+    button.closest('[data-comment-id]')?.remove();
+    setCommentCount(section, result.commentCount);
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : 'Não foi possível apagar o comentário.';
+    button.disabled = false;
+  }
 });

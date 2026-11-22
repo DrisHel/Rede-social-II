@@ -102,6 +102,66 @@ describe('GET /api/users/:id/feed', () => {
   });
 });
 
+describe('GET /api/feed', () => {
+  it('exige uma sessão e devolve as páginas seguintes sem duplicar posts', async () => {
+    const unauthenticated = await request(app).get('/api/feed');
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.body.error).toContain('Autenticação');
+
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
+    await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
+
+    for (let index = 1; index <= 12; index += 1) {
+      await bruno.agent.post('/posts').type('form').send({ content: `Post ${index}` });
+    }
+
+    const firstPage = await ana.agent.get('/api/feed');
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body.posts).toHaveLength(10);
+    expect(firstPage.body.posts[0].content).toBe('Post 12');
+    expect(firstPage.body.posts[9].content).toBe('Post 3');
+    expect(firstPage.body.hasMore).toBe(true);
+    expect(firstPage.body.nextCursor).toBe(firstPage.body.posts[9].id);
+    expect(firstPage.body.html).toContain(`data-post-id="${firstPage.body.posts[0].id}"`);
+    expect(firstPage.body.html).toContain('data-comment-form');
+    expect(firstPage.body.html).toContain('data-like-button');
+    expect(firstPage.body.posts[0].author.passwordHash).toBeUndefined();
+
+    const secondPage = await ana.agent.get(`/api/feed?cursor=${firstPage.body.nextCursor}&limit=10`);
+    expect(secondPage.status).toBe(200);
+    expect(secondPage.body.posts).toHaveLength(2);
+    expect(secondPage.body.posts.map((post: { content: string }) => post.content)).toEqual(['Post 2', 'Post 1']);
+    expect(secondPage.body.hasMore).toBe(false);
+    expect(secondPage.body.nextCursor).toBeNull();
+    expect(firstPage.body.posts.map((post: { id: number }) => post.id))
+      .not.toContain(secondPage.body.posts[0].id);
+
+    const initialFeed = await ana.agent.get('/');
+    expect(initialFeed.status).toBe(200);
+    expect(initialFeed.text.match(/<article data-post-id=/g)).toHaveLength(10);
+    expect(initialFeed.text).toContain('data-has-more="true"');
+    expect(initialFeed.text).toContain('/assets/feedInfiniteScroll.js');
+  });
+
+  it('rejeita cursores e limites inválidos ou fora do feed', async () => {
+    const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
+    const bruno = await registerAndLogin(app, prisma, 'bruno@exemplo.com', 'Bruno');
+    const carla = await registerAndLogin(app, prisma, 'carla@exemplo.com', 'Carla');
+    await ana.agent.post('/follow').type('form').send({ targetId: bruno.userId });
+    await carla.agent.post('/posts').type('form').send({ content: 'Post fora do feed' });
+    const foreignPost = await prisma.post.findFirstOrThrow({
+      where: { content: 'Post fora do feed' },
+      select: { id: true },
+    });
+
+    for (const query of ['?cursor=abc', '?limit=0', '?limit=51', `?cursor=${foreignPost.id}`]) {
+      const response = await ana.agent.get(`/api/feed${query}`);
+      expect(response.status).toBe(400);
+    }
+  });
+});
+
 describe('GET / — feed renderizado + sugestões de quem seguir', () => {
   it('lista outros usuários com isFollowing correto', async () => {
     const ana = await registerAndLogin(app, prisma, 'ana@exemplo.com', 'Ana');
