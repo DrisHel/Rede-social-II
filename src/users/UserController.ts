@@ -62,7 +62,11 @@ export class UserController {
         author: true,
         tags: true,
         comments: {
-          include: { author: { select: { id: true, name: true } } },
+          include: {
+            author: { select: { id: true, name: true } },
+            _count: { select: { commentLikes: true } },
+            commentLikes: { where: { userId }, select: { userId: true } },
+          },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         },
         _count: { select: { likes: true, comments: true } },
@@ -71,7 +75,14 @@ export class UserController {
       orderBy: { createdAt: 'desc' },
     });
 
-    return posts.map(({ likes, ...post }) => ({ ...post, likedByMe: likes.length > 0 }));
+    return posts.map(({ likes, ...post }) => ({
+      ...post,
+      comments: post.comments.map(({ commentLikes, ...comment }) => ({
+        ...comment,
+        likedByMe: commentLikes.length > 0,
+      })),
+      likedByMe: likes.length > 0,
+    }));
   }
 
   async listOthers(currentUserId: number) {

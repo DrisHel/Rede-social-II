@@ -36,7 +36,45 @@ function createCommentElement(comment, currentUserId) {
   const content = document.createElement('p');
   content.className = 'text-sm text-blue-900 mt-1 whitespace-pre-wrap';
   content.textContent = comment.content;
-  item.append(header, content);
+
+  const likedByMe = Boolean(comment.likedByMe);
+  const likeControls = document.createElement('div');
+  likeControls.className = 'flex items-center gap-2 mt-1';
+  const likeButton = document.createElement('button');
+  likeButton.type = 'button';
+  likeButton.dataset.likeButton = '';
+  likeButton.dataset.commentLikeButton = '';
+  likeButton.dataset.likeUrl = `/posts/${comment.postId}/comments/${comment.id}/like`;
+  likeButton.setAttribute('aria-pressed', String(likedByMe));
+  likeButton.title = likedByMe ? 'Descurtir' : 'Curtir';
+  likeButton.className = `flex items-center gap-1 text-xs ${likedByMe ? 'text-red-600' : 'text-blue-600'} hover:text-red-600`;
+
+  const likeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  likeIcon.dataset.likeIcon = '';
+  likeIcon.setAttribute('viewBox', '0 0 24 24');
+  likeIcon.setAttribute('class', 'w-4 h-4');
+  likeIcon.setAttribute('fill', likedByMe ? 'currentColor' : 'none');
+  likeIcon.setAttribute('stroke', 'currentColor');
+  likeIcon.setAttribute('stroke-width', '1.8');
+  const likePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  likePath.setAttribute('stroke-linecap', 'round');
+  likePath.setAttribute('stroke-linejoin', 'round');
+  likePath.setAttribute('d', 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z');
+  likeIcon.append(likePath);
+
+  const likeCount = document.createElement('span');
+  likeCount.dataset.likeCount = '';
+  likeCount.textContent = String(comment._count?.commentLikes ?? 0);
+  likeButton.append(likeIcon, likeCount);
+
+  const likeStatus = document.createElement('span');
+  likeStatus.dataset.likeStatus = '';
+  likeStatus.setAttribute('role', 'status');
+  likeStatus.setAttribute('aria-live', 'polite');
+  likeStatus.className = 'text-xs text-red-600';
+  likeControls.append(likeButton, likeStatus);
+
+  item.append(header, content, likeControls);
   return item;
 }
 

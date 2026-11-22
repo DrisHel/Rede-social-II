@@ -148,6 +148,32 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     }),
   );
 
+  router.post(
+    '/posts/:id/comments/:commentId/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const result = await postController.likeComment(
+        req.session.userId!,
+        Number(req.params.id),
+        Number(req.params.commentId),
+      );
+      res.json(result);
+    }),
+  );
+
+  router.delete(
+    '/posts/:id/comments/:commentId/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const result = await postController.unlikeComment(
+        req.session.userId!,
+        Number(req.params.id),
+        Number(req.params.commentId),
+      );
+      res.json(result);
+    }),
+  );
+
   router.delete(
     '/posts/:id/like',
     requireAuth,
@@ -160,7 +186,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
   router.get(
     '/posts/:id/comments',
     asyncHandler(async (req, res) => {
-      const comments = await postController.listComments(Number(req.params.id));
+      const comments = await postController.listComments(Number(req.params.id), req.session.userId);
       res.json(comments);
     }),
   );
@@ -175,7 +201,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
         req.body,
       );
       const commentCount = await prisma.comment.count({ where: { postId: comment.postId } });
-      res.status(201).json({ ...comment, commentCount });
+      res.status(201).json({ ...comment, likedByMe: false, commentCount });
     }),
   );
 

@@ -385,6 +385,126 @@ describe('comentários em posts', () => {
   });
 });
 
+describe('curtidas em comentários', () => {
+  it('exige autenticação para curtir e descurtir comentários', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post comentável' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post comentável' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário' });
+    const commentId = created.body.id;
+
+    const like = await request(app)
+      .post(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    const unlike = await request(app)
+      .delete(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+
+    expect(like.status).toBe(302);
+    expect(like.headers.location).toBe('/login');
+    expect(unlike.status).toBe(302);
+    expect(unlike.headers.location).toBe('/login');
+  });
+
+  it('alterna sem duplicar curtidas e retorna a contagem atualizada', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post para comentário' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post para comentário' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário curtido' });
+    const commentId = created.body.id;
+
+    expect(created.body._count).toEqual({ commentLikes: 0 });
+    expect(created.body.likedByMe).toBe(false);
+
+    const firstLike = await author.agent
+      .post(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    expect(firstLike.status).toBe(200);
+    expect(firstLike.body).toEqual({ liked: true, likeCount: 1 });
+    expect(await prisma.commentLike.count({ where: { commentId } })).toBe(1);
+
+    const repeatedLike = await author.agent
+      .post(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    expect(repeatedLike.body).toEqual({ liked: true, likeCount: 1 });
+    expect(await prisma.commentLike.count({ where: { commentId } })).toBe(1);
+
+    const unlike = await author.agent
+      .delete(`/posts/${post.id}/comments/${commentId}/like`)
+      .set('Accept', 'application/json');
+    expect(unlike.status).toBe(200);
+    expect(unlike.body).toEqual({ liked: false, likeCount: 0 });
+    expect(await prisma.commentLike.count({ where: { commentId } })).toBe(0);
+  });
+
+  it('rejeita ids inválidos, comentários inexistentes e comentários de outro post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post 1' });
+    await author.agent.post('/posts').type('form').send({ content: 'Post 2' });
+    const firstPost = await prisma.post.findFirstOrThrow({ where: { content: 'Post 1' } });
+    const secondPost = await prisma.post.findFirstOrThrow({ where: { content: 'Post 2' } });
+    const created = await author.agent
+      .post(`/posts/${firstPost.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário' });
+
+    const invalidId = await author.agent
+      .post(`/posts/${firstPost.id}/comments/invalid/like`)
+      .set('Accept', 'application/json');
+    const missingComment = await author.agent
+      .post(`/posts/${firstPost.id}/comments/999/like`)
+      .set('Accept', 'application/json');
+    const wrongPost = await author.agent
+      .post(`/posts/${secondPost.id}/comments/${created.body.id}/like`)
+      .set('Accept', 'application/json');
+
+    expect(invalidId.status).toBe(400);
+    expect(missingComment.status).toBe(404);
+    expect(wrongPost.status).toBe(404);
+  });
+
+  it('mostra contagem e estado da curtida no feed e na página do post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post com comentário curtido' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com comentário curtido' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário com curtida' });
+
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+    await reader.agent
+      .post(`/posts/${post.id}/comments/${created.body.id}/like`)
+      .set('Accept', 'application/json');
+
+    const feed = await reader.agent.get('/');
+    const postPage = await reader.agent.get(`/posts/${post.id}`);
+    const likesScript = await request(app).get('/assets/likes.js');
+    const commentsScript = await request(app).get('/assets/comments.js');
+    const likeMarkup = new RegExp(
+      `data-comment-like-button[^>]*data-like-url="/posts/${post.id}/comments/${created.body.id}/like"[^>]*aria-pressed="true"`,
+    );
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('Comentário com curtida');
+    expect(feed.text).toMatch(likeMarkup);
+    expect(postPage.status).toBe(200);
+    expect(postPage.text).toMatch(likeMarkup);
+    expect(postPage.text).toContain('<span data-like-count>1</span>');
+    expect(likesScript.status).toBe(200);
+    expect(likesScript.text).toContain("document.addEventListener('click'");
+    expect(commentsScript.status).toBe(200);
+    expect(commentsScript.text).toContain('likeButton.dataset.likeUrl');
+  });
+});
+
 describe('POST /posts/:id/delete (autorização — dono do post)', () => {
   it('o dono consegue apagar o próprio post', async () => {
     const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');

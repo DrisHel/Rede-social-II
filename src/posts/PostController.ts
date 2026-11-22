@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError } from '../shared/errors.js';
+import { CommentNotFoundError, PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError } from '../shared/errors.js';
 
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
@@ -54,7 +54,14 @@ export class PostController {
       include: {
         author: true,
         tags: true,
-        comments: { include: { author: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        comments: {
+          include: {
+            author: true,
+            _count: { select: { commentLikes: true } },
+            commentLikes: { where: { userId }, select: { userId: true } },
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
         _count: { select: { likes: true, comments: true } },
         likes: { where: { userId }, select: { userId: true } },
       },
@@ -64,7 +71,14 @@ export class PostController {
     }
 
     const { likes, ...postData } = post;
-    return { ...postData, likedByMe: likes.length > 0 };
+    return {
+      ...postData,
+      comments: post.comments.map(({ commentLikes, ...comment }) => ({
+        ...comment,
+        likedByMe: commentLikes.length > 0,
+      })),
+      likedByMe: likes.length > 0,
+    };
   }
 
   async createComment(postId: number, authorId: number, body: unknown) {
@@ -82,20 +96,33 @@ export class PostController {
 
     return this.prisma.comment.create({
       data: { content: content.trim(), authorId, postId },
-      include: { author: { select: { id: true, name: true } } },
+      include: {
+        author: { select: { id: true, name: true } },
+        _count: { select: { commentLikes: true } },
+      },
     });
   }
 
-  async listComments(postId: number) {
+  async listComments(postId: number, userId?: number) {
     if (!Number.isInteger(postId) || postId <= 0) {
       throw new ValidationError('O id do post deve ser um número inteiro positivo');
     }
     await this.ensurePostExists(postId);
-    return this.prisma.comment.findMany({
+    const comments = await this.prisma.comment.findMany({
       where: { postId },
-      include: { author: { select: { id: true, name: true } } },
+      include: {
+        author: { select: { id: true, name: true } },
+        _count: { select: { commentLikes: true } },
+        ...(userId !== undefined
+          ? { commentLikes: { where: { userId }, select: { userId: true } } }
+          : {}),
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
+    return comments.map(({ commentLikes = [], ...comment }) => ({
+      ...comment,
+      likedByMe: commentLikes.length > 0,
+    }));
   }
 
   async removeComment(commentId: number) {
@@ -128,9 +155,43 @@ export class PostController {
     return { liked: false, likeCount };
   }
 
+  async likeComment(userId: number, postId: number, commentId: number) {
+    this.validateCommentLikeIds(userId, postId, commentId);
+    await this.ensureCommentExists(postId, commentId);
+
+    await this.prisma.commentLike.upsert({
+      where: { userId_commentId: { userId, commentId } },
+      create: { userId, commentId },
+      update: {},
+    });
+
+    const likeCount = await this.prisma.commentLike.count({ where: { commentId } });
+    return { liked: true, likeCount };
+  }
+
+  async unlikeComment(userId: number, postId: number, commentId: number) {
+    this.validateCommentLikeIds(userId, postId, commentId);
+    await this.ensureCommentExists(postId, commentId);
+
+    await this.prisma.commentLike.deleteMany({ where: { userId, commentId } });
+
+    const likeCount = await this.prisma.commentLike.count({ where: { commentId } });
+    return { liked: false, likeCount };
+  }
+
   private validateLikeIds(userId: number, postId: number): void {
     if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(postId) || postId <= 0) {
       throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+  }
+
+  private validateCommentLikeIds(userId: number, postId: number, commentId: number): void {
+    if (
+      !Number.isInteger(userId) || userId <= 0 ||
+      !Number.isInteger(postId) || postId <= 0 ||
+      !Number.isInteger(commentId) || commentId <= 0
+    ) {
+      throw new ValidationError('Os ids do post e do comentário devem ser números inteiros positivos');
     }
   }
 
@@ -138,6 +199,16 @@ export class PostController {
     const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
     if (!post) {
       throw new PostNotFoundError(postId);
+    }
+  }
+
+  private async ensureCommentExists(postId: number, commentId: number): Promise<void> {
+    const comment = await this.prisma.comment.findFirst({
+      where: { id: commentId, postId },
+      select: { id: true },
+    });
+    if (!comment) {
+      throw new CommentNotFoundError(commentId);
     }
   }
 
