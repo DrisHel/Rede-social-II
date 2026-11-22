@@ -7,16 +7,17 @@ datasource db {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  email        String   @unique
-  passwordHash String
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
+  id               Int       @id @default(autoincrement())
+  name             String
+  email            String    @unique
+  passwordHash     String
+  avatarUrl        String?
+  createdAt        DateTime  @default(now())
+  lastFeedAccessAt DateTime?
 
-  posts Post[]
-  likes Like[]
-  comments Comment[]
+  posts        Post[]
+  likes        Like[]
+  comments     Comment[]
   commentLikes CommentLike[]
 
   following Follow[] @relation("follower")
@@ -42,10 +43,10 @@ model Post {
   authorId Int
   author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  tags Tag[]
-  likes Like[]
+  tags     Tag[]
+  likes    Like[]
   comments Comment[]
-  images PostImage[]
+  images   PostImage[]
 }
 
 model PostImage {

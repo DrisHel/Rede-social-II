@@ -77,10 +77,11 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     requireAuth,
     asyncHandler(async (req, res) => {
       const currentUserId = req.session.userId!;
-      const [currentUser, page, others] = await Promise.all([
+      const [currentUser, page, others, activity] = await Promise.all([
         userController.get(currentUserId),
         userController.feedPage(currentUserId, undefined, DEFAULT_FEED_PAGE_SIZE),
         userController.listOthers(currentUserId),
+        userController.getAndMarkNewActivity(currentUserId),
       ]);
       res.render('feed', {
         currentUser,
@@ -88,6 +89,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         others,
+        activity,
       });
     }),
   );

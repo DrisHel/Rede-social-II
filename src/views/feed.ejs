@@ -18,6 +18,12 @@
             Logado como <strong><%= currentUser.name %></strong>
             (<%= currentUser._count.following %> seguindo, <%= currentUser._count.followers %> seguidores)
           </p>
+          <p data-activity-notifications aria-live="polite" class="text-blue-200 text-sm">
+            Novas curtidas/comentários desde o último acesso:
+            <strong data-activity-total><%= activity.total %></strong>
+            (<span data-new-likes><%= activity.likes %></span> curtidas,
+            <span data-new-comments><%= activity.comments %></span> comentários)
+          </p>
         </div>
       </div>
       <div class="flex items-center gap-3">

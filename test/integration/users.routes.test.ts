@@ -175,3 +175,53 @@ describe('GET / — feed renderizado + sugestões de quem seguir', () => {
     expect(res.text).toContain('Já segue');
   });
 });
+
+describe('notificações de atividade no feed', () => {
+  it('conta novas curtidas e comentários uma vez desde a visita anterior', async () => {
+    const owner = await registerAndLogin(app, prisma, 'dona@exemplo.com', 'Dona');
+    const actor = await registerAndLogin(app, prisma, 'interagente@exemplo.com', 'Interagente');
+    await owner.agent.post('/posts').type('form').send({ content: 'Post da dona' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post da dona' } });
+
+    const initialFeed = await owner.agent.get('/');
+    expect(initialFeed.text).toContain('<strong data-activity-total>0</strong>');
+
+    const like = await actor.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    const comment = await actor.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Novo comentário' });
+    expect(like.status).toBe(200);
+    expect(comment.status).toBe(201);
+
+    const notifications = await owner.agent.get('/');
+    expect(notifications.text).toContain('<strong data-activity-total>2</strong>');
+    expect(notifications.text).toContain('<span data-new-likes>1</span>');
+    expect(notifications.text).toContain('<span data-new-comments>1</span>');
+
+    const nextVisit = await owner.agent.get('/');
+    expect(nextVisit.text).toContain('<strong data-activity-total>0</strong>');
+  });
+
+  it('não conta as próprias curtidas e comentários como atividade recebida', async () => {
+    const owner = await registerAndLogin(app, prisma, 'dona@exemplo.com', 'Dona');
+    await owner.agent.post('/posts').type('form').send({ content: 'Post da dona' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post da dona' } });
+
+    const initialFeed = await owner.agent.get('/');
+    expect(initialFeed.text).toContain('<strong data-activity-total>0</strong>');
+
+    const like = await owner.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    const comment = await owner.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Comentário da própria autora' });
+    expect(like.status).toBe(200);
+    expect(comment.status).toBe(201);
+
+    const nextFeed = await owner.agent.get('/');
+    expect(nextFeed.text).toContain('<strong data-activity-total>0</strong>');
+    expect(nextFeed.text).toContain('<span data-new-likes>0</span>');
+    expect(nextFeed.text).toContain('<span data-new-comments>0</span>');
+  });
+});

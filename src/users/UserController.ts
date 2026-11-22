@@ -21,6 +21,49 @@ export class UserController {
     return user;
   }
 
+  async getAndMarkNewActivity(userId: number) {
+    const accessedAt = new Date();
+    return this.prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.findUnique({
+        where: { id: userId },
+        select: { lastFeedAccessAt: true },
+      });
+      if (!user) {
+        throw new UserNotFoundError(userId);
+      }
+
+      if (user.lastFeedAccessAt === null) {
+        await transaction.user.update({
+          where: { id: userId },
+          data: { lastFeedAccessAt: accessedAt },
+        });
+        return { likes: 0, comments: 0, total: 0 };
+      }
+
+      const dateRange = { gt: user.lastFeedAccessAt, lte: accessedAt };
+      const likes = await transaction.like.count({
+        where: {
+          userId: { not: userId },
+          post: { authorId: userId },
+          createdAt: dateRange,
+        },
+      });
+      const comments = await transaction.comment.count({
+        where: {
+          authorId: { not: userId },
+          post: { authorId: userId },
+          createdAt: dateRange,
+        },
+      });
+
+      await transaction.user.update({
+        where: { id: userId },
+        data: { lastFeedAccessAt: accessedAt },
+      });
+      return { likes, comments, total: likes + comments };
+    });
+  }
+
   async follow(followerId: number, body: unknown) {
     const { targetId } = (body ?? {}) as { targetId?: unknown };
     if (typeof targetId !== 'number' || !Number.isInteger(targetId)) {

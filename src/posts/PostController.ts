@@ -110,7 +110,7 @@ export class PostController {
     await this.ensurePostExists(postId);
 
     return this.prisma.comment.create({
-      data: { content: content.trim(), authorId, postId },
+      data: { content: content.trim(), authorId, postId, createdAt: new Date() },
       include: {
         author: { select: { id: true, name: true } },
         _count: { select: { commentLikes: true } },
@@ -173,7 +173,7 @@ export class PostController {
 
     await this.prisma.like.upsert({
       where: { userId_postId: { userId, postId } },
-      create: { userId, postId },
+      create: { userId, postId, createdAt: new Date() },
       update: {},
     });
 
