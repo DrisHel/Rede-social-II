@@ -54,7 +54,7 @@ Dois detalhes do [`docker-compose.yml`](docker-compose.yml) que valem uma olhada
 * **O volume anônimo `- /app/node_modules`.** O bind mount `.:/app` cobriria o `node_modules` compilado dentro da imagem com o da máquina host — que no macOS/Windows tem os binários nativos do SO errado. O volume anônimo por cima "protege" essa pasta.
 * **O banco continua sendo o `dev.db` da pasta do projeto**, porque ele está dentro do bind mount. Ou seja: os dados sobrevivem ao `docker compose down` e o `npm run prisma:studio` na máquina host continua abrindo o mesmo banco que o container usa.
 
-O upload de imagens segue a mesma lógica de sempre ([`src/uploads/createImageStorage.ts`](src/uploads/createImageStorage.ts)): sem `AWS_S3_BUCKET`/`AWS_REGION` no `.env`, os arquivos vão para `uploads/` — que também está no bind mount, então aparecem na pasta do projeto.
+O upload de imagens segue a mesma lógica de sempre ([`src/uploads/createImageStorage.ts`](src/uploads/createImageStorage.ts)): sem `AWS_S3_BUCKET`/`AWS_REGION` no `.env`, os arquivos vão para `uploads/` — que também está no bind mount, então aparecem na pasta do projeto. Cada post aceita até cinco fotos JPEG, PNG ou WebP, com até 5 MB por arquivo; as imagens são exibidas na ordem enviada.
 
 > Esta imagem é de **desenvolvimento** (roda TypeScript direto com `tsx`, inclui as devDependencies). Empacotar para produção — build com `tsc`, imagem só com `dist/` e dependências de runtime — é assunto de outra aula.
 
@@ -82,7 +82,7 @@ Com a extensão **REST Client** (Huachao Mao) instalada no VS Code, abra [`test.
 | `GET /users/:id` | usuário + `_count` de posts/seguidores/seguindo | contagem via relação |
 | `POST /users/:id/follow` | segue outro usuário (`{ targetId }`) | **autorrelação N:N** |
 | `GET /users/:id/feed` | posts de quem o usuário segue | filtro relacional aninhado (`author.followers.some`) |
-| `POST /posts` | cria post (`{ authorId, content, tags?: string[] }`) | **1:N** (`connect`) + **N:N** (`connectOrCreate`) na mesma escrita |
+| `POST /posts` | cria post (sessão obrigatória; até cinco fotos no campo `images`) | **1:N** (`PostImage`) + **N:N** (`connectOrCreate`) na mesma escrita |
 | `GET /posts/:id` | post com autor e tags | `include` |
 | `POST /posts/:id/like` | curte um post (sessão obrigatória; repetição não duplica) | relação N:N explícita `Like` |
 | `DELETE /posts/:id/like` | remove a curtida (sessão obrigatória) | retorna a contagem atualizada |

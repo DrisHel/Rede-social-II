@@ -6,5 +6,5 @@ const prisma = createPrismaClient();
 const app = createServer(prisma);
 
 app.listen(PORT, () => {
-  console.log(`Aula 05 - rede social (auth + upload) rodando em http://localhost:${PORT}`);
+  console.log(`Rede social Poppin rodando em http://localhost:${PORT}`);
 });

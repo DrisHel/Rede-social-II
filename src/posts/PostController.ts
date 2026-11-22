@@ -4,7 +4,7 @@ import { CommentNotFoundError, PostNotFoundError, TagNotFoundError, UserNotFound
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async create(authorId: number, body: unknown, imageUrl?: string) {
+  async create(authorId: number, body: unknown, imageUrls: string[] = []) {
     const { content, tags } = (body ?? {}) as { content?: unknown; tags?: unknown };
 
     if (typeof content !== 'string' || content.trim().length === 0) {
@@ -24,8 +24,10 @@ export class PostController {
     return this.prisma.post.create({
       data: {
         content,
-        imageUrl,
         author: { connect: { id: authorId } },
+        images: {
+          create: imageUrls.map((url, order) => ({ url, order })),
+        },
         tags: {
           connectOrCreate: tagNames.map((name) => ({
             where: { name },
@@ -33,14 +35,22 @@ export class PostController {
           })),
         },
       },
-      include: { author: true, tags: true },
+      include: {
+        author: true,
+        tags: true,
+        images: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
+      },
     });
   }
 
   async get(id: number) {
     const post = await this.prisma.post.findUnique({
       where: { id },
-      include: { author: true, tags: true },
+      include: {
+        author: true,
+        tags: true,
+        images: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
+      },
     });
     if (!post) {
       throw new PostNotFoundError(id);
@@ -54,6 +64,7 @@ export class PostController {
       include: {
         author: true,
         tags: true,
+        images: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
         comments: {
           include: {
             author: true,
@@ -215,7 +226,15 @@ export class PostController {
   async listByTag(name: string) {
     const tag = await this.prisma.tag.findUnique({
       where: { name },
-      include: { posts: { include: { author: true }, orderBy: { createdAt: 'desc' } } },
+      include: {
+        posts: {
+          include: {
+            author: true,
+            images: { orderBy: [{ order: 'asc' }, { id: 'asc' }] },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
     if (!tag) {
       throw new TagNotFoundError(name);

@@ -39,20 +39,43 @@ describe('POST /posts (autenticado)', () => {
     expect(post.tags.map((t) => t.name).sort()).toEqual(['orm', 'prisma']);
   });
 
-  it('faz upload da imagem via ImageStorage e salva a URL retornada no post', async () => {
+  it('serve o seletor e o script que acumulam fotos escolhidas em etapas', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    const form = await agent.get('/posts/new');
+    const script = await request(app).get('/assets/postImages.js');
+
+    expect(form.status).toBe(200);
+    expect(form.text).toContain('name="images"');
+    expect(form.text).toContain('multiple');
+    expect(form.text).toContain('data-post-image-list');
+    expect(form.text).toContain('/assets/postImages.js');
+    expect(script.status).toBe(200);
+    expect(script.text).toContain("input.addEventListener('change'");
+    expect(script.text).toContain('selectedFiles.items.add(file)');
+    expect(script.text).toContain('input.files = selectedFiles.files');
+  });
+
+  it('envia cada foto ao ImageStorage e mantém a ordem no post', async () => {
     const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
 
     const res = await agent
       .post('/posts')
       .field('content', 'Post com foto')
-      .attach('image', Buffer.from('fake-image-bytes'), { filename: 'foto.png', contentType: 'image/png' });
+      .attach('images', Buffer.from('fake-image-1'), { filename: 'foto1.png', contentType: 'image/png' })
+      .attach('images', Buffer.from('fake-image-2'), { filename: 'foto2.jpg', contentType: 'image/jpeg' });
 
     expect(res.status).toBe(302);
-    expect(imageStorage.uploads).toHaveLength(1);
-    expect(imageStorage.uploads[0].originalname).toBe('foto.png');
+    expect(imageStorage.uploads.map((file) => file.originalname)).toEqual(['foto1.png', 'foto2.jpg']);
 
-    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com foto' } });
-    expect(post.imageUrl).toBe('https://fake-bucket.test/foto.png');
+    const post = await prisma.post.findFirstOrThrow({
+      where: { content: 'Post com foto' },
+      include: { images: { orderBy: [{ order: 'asc' }, { id: 'asc' }] } },
+    });
+    expect(post.images.map((image) => image.url)).toEqual([
+      'https://fake-bucket.test/foto1.png',
+      'https://fake-bucket.test/foto2.jpg',
+    ]);
+    expect(post.images.map((image) => image.order)).toEqual([0, 1]);
   });
 
   it('rejeita um arquivo que não é imagem (fileFilter do Multer)', async () => {
@@ -61,10 +84,53 @@ describe('POST /posts (autenticado)', () => {
     const res = await agent
       .post('/posts')
       .field('content', 'Post com anexo inválido')
-      .attach('image', Buffer.from('não é imagem'), { filename: 'arquivo.txt', contentType: 'text/plain' });
+      .attach('images', Buffer.from('não é imagem'), { filename: 'arquivo.txt', contentType: 'text/plain' });
 
     expect(res.status).toBe(500);
     expect(imageStorage.uploads).toHaveLength(0);
+  });
+
+  it('rejeita mais de cinco fotos por postagem', async () => {
+    const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    let uploadRequest = agent
+      .post('/posts')
+      .field('content', 'Post com excesso de fotos');
+    for (let index = 1; index <= 6; index += 1) {
+      uploadRequest = uploadRequest.attach('images', Buffer.from(`fake-image-${index}`), {
+        filename: `foto${index}.png`,
+        contentType: 'image/png',
+      });
+    }
+
+    const res = await uploadRequest;
+
+    expect(res.status).toBe(400);
+    expect(res.text).toContain('no máximo 5 fotos');
+    expect(imageStorage.uploads).toHaveLength(0);
+    await expect(prisma.post.findFirst({ where: { content: 'Post com excesso de fotos' } })).resolves.toBeNull();
+  });
+
+  it('renderiza todas as fotos no feed e na página do post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent
+      .post('/posts')
+      .field('content', 'Post com duas fotos')
+      .attach('images', Buffer.from('fake-image-1'), { filename: 'primeira.png', contentType: 'image/png' })
+      .attach('images', Buffer.from('fake-image-2'), { filename: 'segunda.png', contentType: 'image/png' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post com duas fotos' } });
+
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+
+    const feed = await reader.agent.get('/');
+    const detail = await author.agent.get(`/posts/${post.id}`);
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('https://fake-bucket.test/primeira.png');
+    expect(feed.text).toContain('https://fake-bucket.test/segunda.png');
+    expect(detail.status).toBe(200);
+    expect(detail.text).toContain('https://fake-bucket.test/primeira.png');
+    expect(detail.text).toContain('https://fake-bucket.test/segunda.png');
   });
 
   it('rejeita post sem conteúdo', async () => {

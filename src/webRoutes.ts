@@ -4,7 +4,7 @@ import { AuthController } from './auth/AuthController.js';
 import { UserController } from './users/UserController.js';
 import { PostController } from './posts/PostController.js';
 import { requireAuth, requireOwnComment, requireOwnPost } from './auth/middleware.js';
-import { upload } from './uploads/upload.js';
+import { MAX_POST_IMAGES, upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler } from './shared/http.js';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
@@ -106,18 +106,16 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
   router.post(
     '/posts',
     requireAuth,
-    upload.single('image'),
+    upload.array('images', MAX_POST_IMAGES),
     asyncHandler(async (req, res) => {
       try {
-        let imageUrl: string | undefined;
-        if (req.file) {
-          imageUrl = await imageStorage.upload(req.file);
-        }
+        const files = Array.isArray(req.files) ? req.files : [];
+        const imageUrls = await Promise.all(files.map((file) => imageStorage.upload(file)));
         const tags = typeof req.body.tags === 'string'
           ? req.body.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
           : undefined;
 
-        await postController.create(req.session.userId!, { content: req.body.content, tags }, imageUrl);
+        await postController.create(req.session.userId!, { content: req.body.content, tags }, imageUrls);
         res.redirect('/');
       } catch (err) {
         if (err instanceof ValidationError) {
