@@ -457,6 +457,52 @@ describe('comentários em posts', () => {
     await expect(prisma.comment.findUnique({ where: { id: created.body.id } })).resolves.not.toBeNull();
   });
 
+  it('edita comentário apenas pelo autor e valida o conteúdo', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora-edicao@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post para editar comentário' });
+    await author.agent.post('/posts').type('form').send({ content: 'Outro post' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post para editar comentário' } });
+    const otherPost = await prisma.post.findFirstOrThrow({ where: { content: 'Outro post' } });
+    const created = await author.agent
+      .post(`/posts/${post.id}/comments`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Texto original' });
+    const commentId = created.body.id;
+    const other = await registerAndLogin(app, prisma, 'outra-edicao@exemplo.com');
+
+    const unauthenticated = await request(app)
+      .patch(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Tentativa anônima' });
+    const forbidden = await other.agent
+      .patch(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Tentativa de outra pessoa' });
+    const wrongPost = await author.agent
+      .patch(`/posts/${otherPost.id}/comments/${commentId}`)
+      .set('Accept', 'application/json')
+      .send({ content: 'Tentativa em outro post' });
+    const empty = await author.agent
+      .patch(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json')
+      .send({ content: '   ' });
+
+    expect(unauthenticated.status).toBe(302);
+    expect(unauthenticated.headers.location).toBe('/login');
+    expect(forbidden.status).toBe(403);
+    expect(wrongPost.status).toBe(404);
+    expect(empty.status).toBe(400);
+
+    const updated = await author.agent
+      .patch(`/posts/${post.id}/comments/${commentId}`)
+      .set('Accept', 'application/json')
+      .send({ content: '  Texto editado  ' });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toEqual({ id: commentId, content: 'Texto editado' });
+    await expect(prisma.comment.findUnique({ where: { id: commentId } }))
+      .resolves.toMatchObject({ content: 'Texto editado' });
+  });
+
   it('renderiza comentários no feed e publica o script do formulário assíncrono', async () => {
     const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
     await author.agent.post('/posts').type('form').send({ content: 'Post no feed' });
@@ -474,8 +520,13 @@ describe('comentários em posts', () => {
     expect(feed.status).toBe(200);
     expect(feed.text).toContain('Comentário visível');
     expect(feed.text).toContain('data-comment-form');
+    expect(feed.text).toContain('data-edit-comment');
+    const postPage = await reader.agent.get(`/posts/${post.id}`);
+    expect(postPage.status).toBe(200);
+    expect(postPage.text).toContain('data-edit-comment');
     expect(script.status).toBe(200);
     expect(script.text).toContain('event.preventDefault()');
+    expect(script.text).toContain("method: 'PATCH'");
   });
 });
 

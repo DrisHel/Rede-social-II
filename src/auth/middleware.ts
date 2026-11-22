@@ -44,7 +44,7 @@ export function requireOwnComment(prisma: PrismaClient) {
         return;
       }
       if (comment.authorId !== req.session.userId) {
-        res.status(403).json({ error: 'Você não pode apagar um comentário de outra pessoa' });
+        res.status(403).json({ error: 'Você não pode alterar ou apagar um comentário de outra pessoa' });
         return;
       }
       next();

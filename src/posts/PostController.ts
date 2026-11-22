@@ -136,6 +136,23 @@ export class PostController {
     }));
   }
 
+  async updateComment(postId: number, commentId: number, body: unknown) {
+    const { content } = (body ?? {}) as { content?: unknown };
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      throw new ValidationError('"content" é obrigatório');
+    }
+    if (!Number.isInteger(postId) || postId <= 0 || !Number.isInteger(commentId) || commentId <= 0) {
+      throw new ValidationError('Os ids do post e do comentário devem ser números inteiros positivos');
+    }
+
+    await this.ensureCommentExists(postId, commentId);
+    return this.prisma.comment.update({
+      where: { id: commentId },
+      data: { content: content.trim() },
+      select: { id: true, content: true },
+    });
+  }
+
   async removeComment(commentId: number) {
     const comment = await this.prisma.comment.delete({ where: { id: commentId } });
     const commentCount = await this.prisma.comment.count({ where: { postId: comment.postId } });
