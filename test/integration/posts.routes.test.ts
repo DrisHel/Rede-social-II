@@ -124,13 +124,40 @@ describe('POST /posts (autenticado)', () => {
 
     const feed = await reader.agent.get('/');
     const detail = await author.agent.get(`/posts/${post.id}`);
+    const carouselScript = await request(app).get('/assets/feedCarousel.js');
 
     expect(feed.status).toBe(200);
     expect(feed.text).toContain('https://fake-bucket.test/primeira.png');
     expect(feed.text).toContain('https://fake-bucket.test/segunda.png');
+    expect(feed.text).toContain('data-image-carousel');
+    expect(feed.text).toContain('data-carousel-prev');
+    expect(feed.text).toContain('data-carousel-next');
+    expect(feed.text).toContain('1 / 2');
     expect(detail.status).toBe(200);
     expect(detail.text).toContain('https://fake-bucket.test/primeira.png');
     expect(detail.text).toContain('https://fake-bucket.test/segunda.png');
+    expect(carouselScript.status).toBe(200);
+    expect(carouselScript.text).toContain('currentIndex = (index + slides.length) % slides.length');
+  });
+
+  it('mantém a exibição atual para posts com zero ou uma foto', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post sem foto' });
+    await author.agent
+      .post('/posts')
+      .field('content', 'Post com uma foto')
+      .attach('images', Buffer.from('fake-image'), { filename: 'unica.png', contentType: 'image/png' });
+
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+    const feed = await reader.agent.get('/');
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('Post sem foto');
+    expect(feed.text).toContain('Post com uma foto');
+    expect(feed.text).not.toContain('data-image-carousel');
+    expect(feed.text).toContain('src="https://fake-bucket.test/unica.png"');
+    expect(feed.text).toContain('max-h-80 w-full object-cover');
   });
 
   it('rejeita post sem conteúdo', async () => {
