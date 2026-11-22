@@ -62,7 +62,8 @@ export class PostController {
       include: {
         author: true,
         tags: true,
-        _count: { select: { likes: true } },
+        comments: { include: { author: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        _count: { select: { likes: true, comments: true } },
         likes: { where: { userId }, select: { userId: true } },
       },
     });
@@ -72,6 +73,43 @@ export class PostController {
 
     const { likes, ...postData } = post;
     return { ...postData, likedByMe: likes.length > 0 };
+  }
+
+  async createComment(postId: number, authorId: number, body: unknown) {
+    const { content } = (body ?? {}) as { content?: unknown };
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      throw new ValidationError('"content" é obrigatório');
+    }
+    if (!Number.isInteger(postId) || postId <= 0) {
+      throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+    if (!Number.isInteger(authorId) || authorId <= 0) {
+      throw new ValidationError('O id do autor deve ser um número inteiro positivo');
+    }
+    await this.ensurePostExists(postId);
+
+    return this.prisma.comment.create({
+      data: { content: content.trim(), authorId, postId },
+      include: { author: { select: { id: true, name: true } } },
+    });
+  }
+
+  async listComments(postId: number) {
+    if (!Number.isInteger(postId) || postId <= 0) {
+      throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+    await this.ensurePostExists(postId);
+    return this.prisma.comment.findMany({
+      where: { postId },
+      include: { author: { select: { id: true, name: true } } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async removeComment(commentId: number) {
+    const comment = await this.prisma.comment.delete({ where: { id: commentId } });
+    const commentCount = await this.prisma.comment.count({ where: { postId: comment.postId } });
+    return { commentCount };
   }
 
   async like(userId: number, postId: number) {

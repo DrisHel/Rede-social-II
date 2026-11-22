@@ -8,6 +8,7 @@ export function createTestPrismaClient(): PrismaClient {
 }
 
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
+  await prisma.comment.deleteMany();
   await prisma.like.deleteMany();
   await prisma.follow.deleteMany();
   await prisma.post.deleteMany();

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
+import { CommentNotFoundError } from '../shared/errors.js';
 
 // AUTENTICAÇÃO ("quem é você?"): só verifica se existe uma sessão válida
 // com um `userId`. Não olha PARA QUAL recurso a requisição é — só se há
@@ -32,5 +33,30 @@ export function requireOwnPost(prisma: PrismaClient) {
       return;
     }
     next();
+  };
+}
+
+export function requireOwnComment(prisma: PrismaClient) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const commentId = Number(req.params.commentId);
+    if (!Number.isInteger(commentId) || commentId <= 0) {
+      next(new CommentNotFoundError(commentId));
+      return;
+    }
+
+    void prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { id: true, authorId: true, postId: true },
+    }).then((comment) => {
+      if (!comment || comment.postId !== Number(req.params.id)) {
+        next(new CommentNotFoundError(commentId));
+        return;
+      }
+      if (comment.authorId !== req.session.userId) {
+        res.status(403).json({ error: 'Você não pode apagar um comentário de outra pessoa' });
+        return;
+      }
+      next();
+    }).catch(next);
   };
 }

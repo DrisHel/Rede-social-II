@@ -26,8 +26,8 @@ document.querySelectorAll('[data-like-button]').forEach((button) => {
       button.title = result.liked ? 'Descurtir' : 'Curtir';
       button.querySelector('[data-like-count]').textContent = String(result.likeCount);
       button.querySelector('[data-like-icon]').setAttribute('fill', result.liked ? 'currentColor' : 'none');
-      button.classList.toggle('text-rose-600', result.liked);
-      button.classList.toggle('text-slate-500', !result.liked);
+      button.classList.toggle('text-red-600', result.liked);
+      button.classList.toggle('text-blue-600', !result.liked);
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : 'Não foi possível atualizar a curtida.';
     } finally {

@@ -3,7 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { AuthController } from './auth/AuthController.js';
 import { UserController } from './users/UserController.js';
 import { PostController } from './posts/PostController.js';
-import { requireAuth, requireOwnPost } from './auth/middleware.js';
+import { requireAuth, requireOwnComment, requireOwnPost } from './auth/middleware.js';
 import { upload } from './uploads/upload.js';
 import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler } from './shared/http.js';
@@ -161,6 +161,38 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     requireAuth,
     asyncHandler(async (req, res) => {
       const result = await postController.unlike(req.session.userId!, Number(req.params.id));
+      res.json(result);
+    }),
+  );
+
+  router.get(
+    '/posts/:id/comments',
+    asyncHandler(async (req, res) => {
+      const comments = await postController.listComments(Number(req.params.id));
+      res.json(comments);
+    }),
+  );
+
+  router.post(
+    '/posts/:id/comments',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const comment = await postController.createComment(
+        Number(req.params.id),
+        req.session.userId!,
+        req.body,
+      );
+      const commentCount = await prisma.comment.count({ where: { postId: comment.postId } });
+      res.status(201).json({ ...comment, commentCount });
+    }),
+  );
+
+  router.delete(
+    '/posts/:id/comments/:commentId',
+    requireAuth,
+    requireOwnComment(prisma),
+    asyncHandler(async (req, res) => {
+      const result = await postController.removeComment(Number(req.params.commentId));
       res.json(result);
     }),
   );

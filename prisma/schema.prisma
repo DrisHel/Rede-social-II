@@ -19,6 +19,7 @@ model User {
 
   posts Post[]
   likes Like[]
+  comments Comment[]
 
   // Autorrelação N:N — User segue User, via tabela de junção explícita
   // (precisa ser explícita porque tem duas relações diferentes com User:
@@ -52,6 +53,7 @@ model Post {
   // N:N implícita — o Prisma cria e gerencia a tabela de junção sozinho.
   tags Tag[]
   likes Like[]
+  comments Comment[]
 }
 
 model Like {
@@ -64,6 +66,19 @@ model Like {
 
   @@id([userId, postId])
   @@index([postId])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  authorId  Int
+  postId    Int
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
 }
 
 model Tag {

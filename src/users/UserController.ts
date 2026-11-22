@@ -69,7 +69,11 @@ export class UserController {
       include: {
         author: true,
         tags: true,
-        _count: { select: { likes: true } },
+        comments: {
+          include: { author: { select: { id: true, name: true } } },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+        _count: { select: { likes: true, comments: true } },
         likes: { where: { userId }, select: { userId: true } },
       },
       orderBy: { createdAt: 'desc' },
