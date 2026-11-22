@@ -4,14 +4,6 @@ import { PostNotFoundError, TagNotFoundError, UserNotFoundError, ValidationError
 export class PostController {
   constructor(private readonly prisma: PrismaClient) {}
 
-  // `authorId` vem da SESSÃO (ver src/webRoutes.ts), nunca do corpo da
-  // requisição: é a autorização "você só pode postar como você mesmo" em
-  // código — antes da Aula 05 (sem login), qualquer chamador podia mandar
-  // qualquer `authorId` no body.
-  //
-  // 1:N (author) + N:N (tags) na mesma escrita: `connect` liga o post a um
-  // autor existente, `connectOrCreate` reaproveita tags já cadastradas ou
-  // cria as que ainda não existem — tudo em uma única operação do Prisma.
   async create(authorId: number, body: unknown, imageUrl?: string) {
     const { content, tags } = (body ?? {}) as { content?: unknown; tags?: unknown };
 
@@ -160,9 +152,6 @@ export class PostController {
     return tag.posts;
   }
 
-  // A checagem "é dono do post?" já aconteceu no middleware
-  // `requireOwnPost` (src/auth/middleware.ts) antes desta rota ser
-  // chamada — aqui só falta apagar.
   async remove(id: number): Promise<void> {
     await this.prisma.post.delete({ where: { id } });
   }

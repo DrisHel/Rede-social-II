@@ -2,9 +2,6 @@ import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { DuplicateFollowError, SelfFollowError, UserNotFoundError, ValidationError } from '../shared/errors.js';
 
-// Criar usuário agora é responsabilidade só do AuthController#register
-// (precisa de senha/hash) — não existe mais um "criar usuário sem senha"
-// aqui, de propósito.
 export class UserController {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -21,8 +18,6 @@ export class UserController {
     return user;
   }
 
-  // Autorrelação N:N em ação: um User segue outro User através da tabela
-  // de junção explícita `Follow`.
   async follow(followerId: number, body: unknown) {
     const { targetId } = (body ?? {}) as { targetId?: unknown };
     if (typeof targetId !== 'number' || !Number.isInteger(targetId)) {
@@ -55,9 +50,6 @@ export class UserController {
     }
   }
 
-  // Feed = posts de quem eu sigo. Mostra um filtro relacional aninhado:
-  // "posts cujo autor tem, entre seus seguidores, um Follow onde eu sou o
-  // follower" — sem precisar buscar a lista de ids manualmente antes.
   async feed(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -82,9 +74,6 @@ export class UserController {
     return posts.map(({ likes, ...post }) => ({ ...post, likedByMe: likes.length > 0 }));
   }
 
-  // Lista para a tela inicial sugerir quem seguir: todo mundo, exceto eu
-  // mesmo, marcando quem eu já sigo (`isFollowing`) para a view decidir
-  // entre mostrar o botão "Seguir" ou "Já segue".
   async listOthers(currentUserId: number) {
     const users = await this.prisma.user.findMany({
       where: { id: { not: currentUserId } },

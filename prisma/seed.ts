@@ -6,8 +6,6 @@ import { hashPassword } from '../src/auth/passwords.js';
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-// Senha de demonstração para os 3 usuários semeados — usem "senha123" para
-// testar login em qualquer um deles (ver Aula05/rede-social/README.md).
 const DEMO_PASSWORD = 'senha123';
 
 async function main() {
@@ -24,7 +22,6 @@ async function main() {
     prisma.user.create({ data: { name: 'Carla', email: 'carla@exemplo.com', passwordHash } }),
   ]);
 
-  // Autorrelação N:N: Ana e Carla seguem Bruno.
   await prisma.follow.createMany({
     data: [
       { followerId: ana.id, followingId: bruno.id },
@@ -33,7 +30,6 @@ async function main() {
     ],
   });
 
-  // 1:N (autor) + N:N (tags) numa escrita só.
   await prisma.post.create({
     data: {
       content: 'Primeiro post usando Prisma!',

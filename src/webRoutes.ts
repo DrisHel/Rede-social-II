@@ -9,9 +9,6 @@ import type { ImageStorage } from './uploads/storage.js';
 import { asyncHandler } from './shared/http.js';
 import { DuplicateEmailError, InvalidCredentialsError, ValidationError } from './shared/errors.js';
 
-// Rotas que servem HTML (EJS) e dependem de sessão — diferente de
-// routes.ts, que é só a API JSON de leitura. `requireAuth` (autenticação)
-// e `requireOwnPost` (autorização) ficam em src/auth/middleware.ts.
 export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage): Router {
   const router = Router();
   const authController = new AuthController(prisma);
@@ -57,11 +54,7 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     asyncHandler(async (req, res) => {
       try {
         const user = await authController.login(req.body);
-        // É isso que "loga" o usuário: guardar o id na sessão. A partir
-        // daqui, toda requisição desse navegador vai carregar
-        // `req.session.userId` (via cookie) até o logout ou o cookie expirar.
         req.session.userId = user.id; 
-        // req.session.user = user; // Ensure the `user` type matches the extended session type
         res.redirect('/');
       } catch (err) {
         if (err instanceof InvalidCredentialsError) {
@@ -112,12 +105,11 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
 
   router.post(
     '/posts',
-    requireAuth, // middlware
-    upload.single('image'), // middleware
+    requireAuth,
+    upload.single('image'),
     asyncHandler(async (req, res) => {
       try {
         let imageUrl: string | undefined;
-        // o parse do arquivo fica disponivel em req.file
         if (req.file) {
           imageUrl = await imageStorage.upload(req.file);
         }

@@ -6,13 +6,10 @@ datasource db {
   provider = "sqlite"
 }
 
-// 1:N — um autor tem muitos posts.
 model User {
   id           Int      @id @default(autoincrement())
   name         String
   email        String   @unique
-  // Nunca a senha em texto puro — só o hash gerado pelo bcrypt
-  // (ver src/auth/passwords.ts). Mesmo um vazamento do banco não expõe a senha.
   passwordHash String
   avatarUrl    String?
   createdAt    DateTime @default(now())
@@ -21,9 +18,6 @@ model User {
   likes Like[]
   comments Comment[]
 
-  // Autorrelação N:N — User segue User, via tabela de junção explícita
-  // (precisa ser explícita porque tem duas relações diferentes com User:
-  // "quem segue" e "quem é seguido").
   following Follow[] @relation("follower")
   followers Follow[] @relation("following")
 }
@@ -42,15 +36,12 @@ model Follow {
 model Post {
   id        Int      @id @default(autoincrement())
   content   String
-  // URL pública do arquivo no S3 (ou no storage local, em dev) — o binário
-  // da imagem nunca é salvo no banco, só o endereço dele. Ver src/uploads/.
   imageUrl  String?
   createdAt DateTime @default(now())
 
   authorId Int
   author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  // N:N implícita — o Prisma cria e gerencia a tabela de junção sozinho.
   tags Tag[]
   likes Like[]
   comments Comment[]

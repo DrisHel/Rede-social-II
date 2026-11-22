@@ -3,9 +3,6 @@ import type { UserController } from './users/UserController.js';
 import type { PostController } from './posts/PostController.js';
 import { asyncHandler } from './shared/http.js';
 
-// API JSON só de LEITURA. Escritas (criar usuário, seguir, criar post)
-// migraram para src/webRoutes.ts, porque agora dependem de quem está
-// logado (sessão) — ver Aula05/aula05.md.
 export function createRoutes(userController: UserController, postController: PostController): Router {
   const router = Router();
 

@@ -14,10 +14,6 @@
         <p class="bg-red-50 text-red-700 text-sm rounded px-3 py-2 mb-4"><%= error %></p>
       <% } %>
 
-      <!-- enctype="multipart/form-data" é obrigatório para o campo de
-           arquivo (avatar) chegar no servidor — sem isso, o navegador só
-           manda o nome do arquivo como texto, não o conteúdo. É esse
-           enctype que o Multer (upload.single('avatar')) sabe processar. -->
       <form method="post" action="/register" enctype="multipart/form-data" class="flex flex-col gap-3">
         <label class="text-sm text-blue-800">
           Nome

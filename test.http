@@ -1,15 +1,4 @@
-### Aula 04 — Rede social (Prisma)
-### Requer a extensão "REST Client" (Huachao Mao) no VS Code.
-### Suba o servidor antes: `npm run dev` (http://localhost:3003)
-### Rode um bloco de cada vez clicando em "Send Request" acima de cada ###.
-### Se rodar do zero (banco vazio), siga a ordem de cima para baixo —
-### os requests nomeados (@name) reaproveitam o id da resposta anterior.
-
 @baseUrl = http://localhost:3003
-
-### =========================================================
-### 1. Usuários — criação (1:N: cada um vai virar autor de posts)
-### =========================================================
 
 # @name createAna
 POST {{baseUrl}}/users
@@ -44,14 +33,7 @@ Content-Type: application/json
 
 ###
 
-### Buscar um usuário (ainda sem posts/seguidores)
 GET {{baseUrl}}/users/{{createAna.response.body.$.id}}
-
-### =========================================================
-### 2. Follow — autorrelação N:N (User segue User)
-### =========================================================
-
-### Ana segue Bruno
 POST {{baseUrl}}/users/{{createAna.response.body.$.id}}/follow
 Content-Type: application/json
 
@@ -61,7 +43,6 @@ Content-Type: application/json
 
 ###
 
-### Ana segue Carla
 POST {{baseUrl}}/users/{{createAna.response.body.$.id}}/follow
 Content-Type: application/json
 
@@ -71,7 +52,6 @@ Content-Type: application/json
 
 ###
 
-### Carla segue Bruno
 POST {{baseUrl}}/users/{{createCarla.response.body.$.id}}/follow
 Content-Type: application/json
 
@@ -81,12 +61,7 @@ Content-Type: application/json
 
 ###
 
-### Ana de novo — repare em `_count.following: 2`
 GET {{baseUrl}}/users/{{createAna.response.body.$.id}}
-
-### =========================================================
-### 3. Posts — 1:N (author) + N:N (tags) na mesma escrita
-### =========================================================
 
 # @name createPost1
 POST {{baseUrl}}/posts
@@ -100,7 +75,6 @@ Content-Type: application/json
 
 ###
 
-### Segundo post do Bruno — reaproveita a tag "prisma" (connectOrCreate) e cria "orm"
 POST {{baseUrl}}/posts
 Content-Type: application/json
 
@@ -112,7 +86,6 @@ Content-Type: application/json
 
 ###
 
-### Post da Carla, também com a tag "orm" (reaproveitada)
 POST {{baseUrl}}/posts
 Content-Type: application/json
 
@@ -124,36 +97,21 @@ Content-Type: application/json
 
 ###
 
-### Buscar um post específico (com author + tags via include)
 GET {{baseUrl}}/posts/{{createPost1.response.body.$.id}}
-
-### =========================================================
-### 4. Feed e busca por tag
-### =========================================================
-
-### Feed da Ana — só posts de quem ela segue (Bruno e Carla)
 GET {{baseUrl}}/users/{{createAna.response.body.$.id}}/feed
 
 ###
 
-### Feed do Bruno — vazio, ele não segue ninguém
 GET {{baseUrl}}/users/{{createBruno.response.body.$.id}}/feed
 
 ###
 
-### Todos os posts com a tag "orm"
 GET {{baseUrl}}/tags/orm/posts
 
 ###
 
-### Todos os posts com a tag "prisma"
 GET {{baseUrl}}/tags/prisma/posts
 
-### =========================================================
-### 5. Casos de erro (validação, conflito, não encontrado)
-### =========================================================
-
-### 400 — nome ausente
 POST {{baseUrl}}/users
 Content-Type: application/json
 
@@ -163,7 +121,6 @@ Content-Type: application/json
 
 ###
 
-### 409 — e-mail duplicado
 POST {{baseUrl}}/users
 Content-Type: application/json
 
@@ -174,12 +131,10 @@ Content-Type: application/json
 
 ###
 
-### 404 — usuário inexistente
 GET {{baseUrl}}/users/999999
 
 ###
 
-### 400 — seguir a si mesmo
 POST {{baseUrl}}/users/{{createAna.response.body.$.id}}/follow
 Content-Type: application/json
 
@@ -189,7 +144,6 @@ Content-Type: application/json
 
 ###
 
-### 409 — seguir o mesmo usuário duas vezes (Ana já segue Bruno acima)
 POST {{baseUrl}}/users/{{createAna.response.body.$.id}}/follow
 Content-Type: application/json
 
@@ -199,7 +153,6 @@ Content-Type: application/json
 
 ###
 
-### 404 — seguir usuário inexistente
 POST {{baseUrl}}/users/{{createAna.response.body.$.id}}/follow
 Content-Type: application/json
 
@@ -209,7 +162,6 @@ Content-Type: application/json
 
 ###
 
-### 404 — post de autor inexistente
 POST {{baseUrl}}/posts
 Content-Type: application/json
 
@@ -220,7 +172,6 @@ Content-Type: application/json
 
 ###
 
-### 400 — post sem conteúdo
 POST {{baseUrl}}/posts
 Content-Type: application/json
 
@@ -231,10 +182,8 @@ Content-Type: application/json
 
 ###
 
-### 404 — post inexistente
 GET {{baseUrl}}/posts/999999
 
 ###
 
-### 404 — tag inexistente
 GET {{baseUrl}}/tags/inexistente/posts

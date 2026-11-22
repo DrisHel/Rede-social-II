@@ -71,7 +71,6 @@ describe('POST /register', () => {
     const user = await prisma.user.findUniqueOrThrow({ where: { email: 'ana@exemplo.com' } });
     expect(user.passwordHash).not.toBe('senha123');
 
-    // A sessão criada no registro já dá acesso à área logada.
     const feed = await agent.get('/');
     expect(feed.status).toBe(200);
     expect(feed.text).toContain('Ana');
