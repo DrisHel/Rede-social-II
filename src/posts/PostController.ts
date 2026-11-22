@@ -56,6 +56,61 @@ export class PostController {
     return post;
   }
 
+  async getForUser(id: number, userId: number) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+      include: {
+        author: true,
+        tags: true,
+        _count: { select: { likes: true } },
+        likes: { where: { userId }, select: { userId: true } },
+      },
+    });
+    if (!post) {
+      throw new PostNotFoundError(id);
+    }
+
+    const { likes, ...postData } = post;
+    return { ...postData, likedByMe: likes.length > 0 };
+  }
+
+  async like(userId: number, postId: number) {
+    this.validateLikeIds(userId, postId);
+    await this.ensurePostExists(postId);
+
+    await this.prisma.like.upsert({
+      where: { userId_postId: { userId, postId } },
+      create: { userId, postId },
+      update: {},
+    });
+
+    const likeCount = await this.prisma.like.count({ where: { postId } });
+    return { liked: true, likeCount };
+  }
+
+  async unlike(userId: number, postId: number) {
+    this.validateLikeIds(userId, postId);
+    await this.ensurePostExists(postId);
+
+    await this.prisma.like.deleteMany({ where: { userId, postId } });
+
+    const likeCount = await this.prisma.like.count({ where: { postId } });
+    return { liked: false, likeCount };
+  }
+
+  private validateLikeIds(userId: number, postId: number): void {
+    if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(postId) || postId <= 0) {
+      throw new ValidationError('O id do post deve ser um número inteiro positivo');
+    }
+  }
+
+  private async ensurePostExists(postId: number): Promise<void> {
+    const post = await this.prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    if (!post) {
+      throw new PostNotFoundError(postId);
+    }
+  }
+
   async listByTag(name: string) {
     const tag = await this.prisma.tag.findUnique({
       where: { name },

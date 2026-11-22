@@ -64,11 +64,18 @@ export class UserController {
       throw new UserNotFoundError(userId);
     }
 
-    return this.prisma.post.findMany({
+    const posts = await this.prisma.post.findMany({
       where: { author: { followers: { some: { followerId: userId } } } },
-      include: { author: true, tags: true },
+      include: {
+        author: true,
+        tags: true,
+        _count: { select: { likes: true } },
+        likes: { where: { userId }, select: { userId: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
+
+    return posts.map(({ likes, ...post }) => ({ ...post, likedByMe: likes.length > 0 }));
   }
 
   // Lista para a tela inicial sugerir quem seguir: todo mundo, exceto eu

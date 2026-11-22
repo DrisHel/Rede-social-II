@@ -76,6 +76,101 @@ describe('POST /posts (autenticado)', () => {
   });
 });
 
+describe('curtidas em posts', () => {
+  it('serve o JavaScript de curtidas compartilhado', async () => {
+    const res = await request(app).get('/assets/likes.js');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("method: liked ? 'DELETE' : 'POST'");
+  });
+
+  it('renderiza a página do post com a curtida atual do usuário', async () => {
+    const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await user.agent.post('/posts').type('form').send({ content: 'Post em detalhe' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post em detalhe' } });
+
+    await user.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    const res = await user.agent.get(`/posts/${post.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Post em detalhe');
+    expect(res.text).toContain('aria-pressed="true"');
+    expect(res.text).toContain('<span data-like-count>1</span>');
+  });
+
+  it('protege a página de post com autenticação', async () => {
+    const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await user.agent.post('/posts').type('form').send({ content: 'Post privado no feed' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post privado no feed' } });
+
+    const res = await request(app).get(`/posts/${post.id}`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/login');
+  });
+
+  it('exige autenticação para curtir e descurtir', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com');
+    await author.agent.post('/posts').type('form').send({ content: 'Post para curtir' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post para curtir' } });
+
+    const likeResponse = await request(app).post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    const unlikeResponse = await request(app).delete(`/posts/${post.id}/like`).set('Accept', 'application/json');
+
+    expect(likeResponse.status).toBe(302);
+    expect(likeResponse.headers.location).toBe('/login');
+    expect(unlikeResponse.status).toBe(302);
+    expect(unlikeResponse.headers.location).toBe('/login');
+  });
+
+  it('curte e descurte sem duplicar registros e devolve a contagem atualizada', async () => {
+    const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+    await user.agent.post('/posts').type('form').send({ content: 'Post curtido' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post curtido' } });
+
+    const firstLike = await user.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    expect(firstLike.status).toBe(200);
+    expect(firstLike.body).toEqual({ liked: true, likeCount: 1 });
+    expect(await prisma.like.count({ where: { postId: post.id } })).toBe(1);
+
+    const repeatedLike = await user.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    expect(repeatedLike.status).toBe(200);
+    expect(repeatedLike.body).toEqual({ liked: true, likeCount: 1 });
+    expect(await prisma.like.count({ where: { postId: post.id } })).toBe(1);
+
+    const unlike = await user.agent.delete(`/posts/${post.id}/like`).set('Accept', 'application/json');
+
+    expect(unlike.status).toBe(200);
+    expect(unlike.body).toEqual({ liked: false, likeCount: 0 });
+    expect(await prisma.like.count({ where: { postId: post.id } })).toBe(0);
+  });
+
+  it('retorna 404 para post inexistente e 400 para id inválido', async () => {
+    const user = await registerAndLogin(app, prisma, 'ana@exemplo.com');
+
+    const missingPost = await user.agent.post('/posts/999/like').set('Accept', 'application/json');
+    const invalidId = await user.agent.delete('/posts/invalid/like').set('Accept', 'application/json');
+
+    expect(missingPost.status).toBe(404);
+    expect(invalidId.status).toBe(400);
+  });
+
+  it('mostra no feed a contagem e se o usuário atual curtiu o post', async () => {
+    const author = await registerAndLogin(app, prisma, 'autora@exemplo.com', 'Autora');
+    await author.agent.post('/posts').type('form').send({ content: 'Post no feed' });
+    const post = await prisma.post.findFirstOrThrow({ where: { content: 'Post no feed' } });
+
+    const reader = await registerAndLogin(app, prisma, 'leitora@exemplo.com', 'Leitora');
+    await reader.agent.post('/follow').type('form').send({ targetId: author.userId });
+    await reader.agent.post(`/posts/${post.id}/like`).set('Accept', 'application/json');
+    const feed = await reader.agent.get('/');
+
+    expect(feed.status).toBe(200);
+    expect(feed.text).toContain('aria-pressed="true"');
+    expect(feed.text).toContain('<span data-like-count>1</span>');
+  });
+});
+
 describe('POST /posts/:id/delete (autorização — dono do post)', () => {
   it('o dono consegue apagar o próprio post', async () => {
     const { agent } = await registerAndLogin(app, prisma, 'ana@exemplo.com');

@@ -97,6 +97,19 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     res.render('newPost', { error: null });
   });
 
+  router.get(
+    '/posts/:id',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const currentUserId = req.session.userId!;
+      const [currentUser, post] = await Promise.all([
+        userController.get(currentUserId),
+        postController.getForUser(Number(req.params.id), currentUserId),
+      ]);
+      res.render('post', { currentUser, post });
+    }),
+  );
+
   router.post(
     '/posts',
     requireAuth, // middlware
@@ -131,6 +144,24 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     asyncHandler(async (req, res) => {
       await postController.remove(Number(req.params.id));
       res.redirect('/');
+    }),
+  );
+
+  router.post(
+    '/posts/:id/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const result = await postController.like(req.session.userId!, Number(req.params.id));
+      res.json(result);
+    }),
+  );
+
+  router.delete(
+    '/posts/:id/like',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const result = await postController.unlike(req.session.userId!, Number(req.params.id));
+      res.json(result);
     }),
   );
 

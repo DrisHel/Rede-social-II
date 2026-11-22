@@ -20,6 +20,8 @@ export function createServer(prisma: PrismaClient, imageStorage: ImageStorage = 
   app.use(express.urlencoded({ extended: true })); // formulários EJS enviam application/x-www-form-urlencoded
   app.use(createSessionMiddleware());
 
+  app.use('/assets', express.static(path.join(import.meta.dirname, 'public')));
+
   // Serve os arquivos gravados por `LocalImageStorage` (dev/aula sem AWS).
   // Com S3ImageStorage em uso, esta rota simplesmente não é acessada.
   app.use('/uploads', express.static(UPLOAD_DIR));

@@ -84,19 +84,21 @@ Com a extensão **REST Client** (Huachao Mao) instalada no VS Code, abra [`test.
 | `GET /users/:id/feed` | posts de quem o usuário segue | filtro relacional aninhado (`author.followers.some`) |
 | `POST /posts` | cria post (`{ authorId, content, tags?: string[] }`) | **1:N** (`connect`) + **N:N** (`connectOrCreate`) na mesma escrita |
 | `GET /posts/:id` | post com autor e tags | `include` |
+| `POST /posts/:id/like` | curte um post (sessão obrigatória; repetição não duplica) | relação N:N explícita `Like` |
+| `DELETE /posts/:id/like` | remove a curtida (sessão obrigatória) | retorna a contagem atualizada |
 | `GET /tags/:name/posts` | posts de uma tag | N:N do outro lado |
 
 ## Estrutura
 
 ```
 prisma/
-├── schema.prisma   → os 4 models e as 3 relações
+├── schema.prisma   → os models e relações da rede social, incluindo curtidas
 └── seed.ts          → dados de exemplo
 
 src/
 ├── db.ts                    fábrica de PrismaClient
 ├── users/UserController.ts   create, get, follow, feed
-├── posts/PostController.ts   create, get, listByTag
+├── posts/PostController.ts   create, get, like, unlike, listByTag
 ├── shared/                   erros de domínio, error handler, asyncHandler
 ├── routes.ts, server.ts, index.ts
 
