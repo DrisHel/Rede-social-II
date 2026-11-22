@@ -64,7 +64,7 @@ O upload de imagens segue a mesma lógica de sempre ([`src/uploads/createImageSt
 npm install              # também roda `prisma generate` (postinstall)
 npm run prisma:migrate    # cria dev.db e aplica a primeira migration
 npm run prisma:seed       # popula com 3 usuários, 3 posts, 2 tags, 3 follows
-npm run dev                 # sobe a API em http://localhost:3003
+npm run dev                 # sobe a API em http://localhost:3004
 npm test                     # suíte de integração (usa um SQLite dedicado, test.db)
 ```
 
