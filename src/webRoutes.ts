@@ -209,6 +209,20 @@ export function createWebRoutes(prisma: PrismaClient, imageStorage: ImageStorage
     }),
   );
 
+  router.patch(
+    '/posts/:id/comments/:commentId',
+    requireAuth,
+    requireOwnComment(prisma),
+    asyncHandler(async (req, res) => {
+      const comment = await postController.updateComment(
+        Number(req.params.id),
+        Number(req.params.commentId),
+        req.body,
+      );
+      res.json(comment);
+    }),
+  );
+
   router.delete(
     '/posts/:id/comments/:commentId',
     requireAuth,

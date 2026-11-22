@@ -23,6 +23,14 @@ function createCommentElement(comment, currentUserId) {
   metadata.append(date);
 
   if (comment.authorId === currentUserId) {
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.dataset.editComment = '';
+    editButton.dataset.commentId = String(comment.id);
+    editButton.className = 'text-xs text-blue-600 hover:underline';
+    editButton.textContent = 'Editar';
+    metadata.append(editButton);
+
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.dataset.deleteComment = '';
@@ -34,6 +42,7 @@ function createCommentElement(comment, currentUserId) {
 
   header.append(author, metadata);
   const content = document.createElement('p');
+  content.dataset.commentContent = '';
   content.className = 'text-sm text-blue-900 mt-1 whitespace-pre-wrap';
   content.textContent = comment.content;
 
@@ -78,11 +87,106 @@ function createCommentElement(comment, currentUserId) {
   return item;
 }
 
+function createCommentEditForm(commentId) {
+  const form = document.createElement('form');
+  form.dataset.editCommentForm = '';
+  form.hidden = true;
+  form.className = 'mt-2 flex-col gap-2';
+
+  const fieldId = `edit-comment-${commentId}`;
+  const label = document.createElement('label');
+  label.htmlFor = fieldId;
+  label.className = 'sr-only';
+  label.textContent = 'Editar comentário';
+
+  const field = document.createElement('textarea');
+  field.id = fieldId;
+  field.name = 'content';
+  field.required = true;
+  field.rows = 2;
+  field.className = 'w-full border border-blue-200 rounded px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100';
+
+  const actions = document.createElement('div');
+  actions.className = 'flex justify-end gap-2';
+  const saveButton = document.createElement('button');
+  saveButton.type = 'submit';
+  saveButton.className = 'bg-blue-800 text-white text-xs rounded px-3 py-1.5 hover:bg-blue-900';
+  saveButton.textContent = 'Salvar';
+  const cancelButton = document.createElement('button');
+  cancelButton.type = 'button';
+  cancelButton.dataset.cancelCommentEdit = '';
+  cancelButton.className = 'text-xs text-blue-600 hover:underline';
+  cancelButton.textContent = 'Cancelar';
+  actions.append(saveButton, cancelButton);
+
+  const status = document.createElement('p');
+  status.dataset.commentEditStatus = '';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  status.className = 'text-xs text-red-600';
+  form.append(label, field, actions, status);
+  return form;
+}
+
+async function updateComment(form) {
+  const section = form.closest('[data-comment-section]');
+  const item = form.closest('li[data-comment-id]');
+  const commentId = item?.dataset.commentId;
+  const postId = section?.dataset.postId;
+  const field = form.elements.namedItem('content');
+  const status = form.querySelector('[data-comment-edit-status]');
+  const submitButton = form.querySelector('button[type="submit"]');
+  const content = item?.querySelector('[data-comment-content]');
+  const editButton = item?.querySelector('[data-edit-comment]');
+  if (
+    !postId
+    || !commentId
+    || !(field instanceof HTMLTextAreaElement)
+    || !(status instanceof HTMLElement)
+    || !(submitButton instanceof HTMLButtonElement)
+    || !(content instanceof HTMLElement)
+    || !(editButton instanceof HTMLButtonElement)
+  ) return;
+
+  submitButton.disabled = true;
+  status.textContent = '';
+  try {
+    const response = await fetch(`/posts/${postId}/comments/${commentId}`, {
+      method: 'PATCH',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ content: field.value }),
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (response.redirected) throw new Error('Sua sessão expirou. Entre novamente para editar comentários.');
+    const result = contentType.includes('application/json') ? await response.json() : null;
+    if (!response.ok || !result || typeof result.content !== 'string') {
+      throw new Error(result?.error || 'Não foi possível editar o comentário.');
+    }
+
+    content.textContent = result.content;
+    content.hidden = false;
+    form.hidden = true;
+    form.classList.remove('flex');
+    editButton.hidden = false;
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : 'Não foi possível editar o comentário.';
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
 const commentEventRoot = document.querySelector('[data-feed-list]') || document;
 
 commentEventRoot.addEventListener('submit', async (event) => {
   const form = event.target;
-  if (!(form instanceof HTMLFormElement) || !form.matches('[data-comment-form]')) return;
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.matches('[data-edit-comment-form]')) {
+    event.preventDefault();
+    await updateComment(form);
+    return;
+  }
+  if (!form.matches('[data-comment-form]')) return;
 
   event.preventDefault();
   const section = form.closest('[data-comment-section]');
@@ -130,6 +234,53 @@ commentEventRoot.addEventListener('submit', async (event) => {
 
 commentEventRoot.addEventListener('click', async (event) => {
   if (!(event.target instanceof Element)) return;
+  const cancelButton = event.target.closest('[data-cancel-comment-edit]');
+  if (cancelButton instanceof HTMLButtonElement) {
+    const form = cancelButton.closest('[data-edit-comment-form]');
+    const item = cancelButton.closest('li[data-comment-id]');
+    const content = item?.querySelector('[data-comment-content]');
+    const editButton = item?.querySelector('[data-edit-comment]');
+    const field = form?.elements.namedItem('content');
+    const status = form?.querySelector('[data-comment-edit-status]');
+    if (
+      form instanceof HTMLFormElement
+      && content instanceof HTMLElement
+      && editButton instanceof HTMLButtonElement
+      && field instanceof HTMLTextAreaElement
+    ) {
+      form.hidden = true;
+      form.classList.remove('flex');
+      field.value = content.textContent || '';
+      content.hidden = false;
+      editButton.hidden = false;
+      if (status instanceof HTMLElement) status.textContent = '';
+    }
+    return;
+  }
+
+  const editButton = event.target.closest('[data-edit-comment]');
+  if (editButton instanceof HTMLButtonElement) {
+    const item = editButton.closest('li[data-comment-id]');
+    const content = item?.querySelector('[data-comment-content]');
+    const commentId = item?.dataset.commentId;
+    if (!item || !(content instanceof HTMLElement) || !commentId) return;
+
+    let form = item.querySelector('[data-edit-comment-form]');
+    if (!(form instanceof HTMLFormElement)) {
+      form = createCommentEditForm(commentId);
+      content.after(form);
+    }
+    const field = form.elements.namedItem('content');
+    if (!(field instanceof HTMLTextAreaElement)) return;
+    field.value = content.textContent || '';
+    form.hidden = false;
+    form.classList.add('flex');
+    content.hidden = true;
+    editButton.hidden = true;
+    field.focus();
+    return;
+  }
+
   const button = event.target.closest('[data-delete-comment]');
   if (!(button instanceof HTMLButtonElement) || button.disabled) return;
 
@@ -154,7 +305,7 @@ commentEventRoot.addEventListener('click', async (event) => {
       throw new Error(result?.error || 'Não foi possível apagar o comentário.');
     }
 
-    button.closest('[data-comment-id]')?.remove();
+    button.closest('li[data-comment-id]')?.remove();
     setCommentCount(section, result.commentCount);
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : 'Não foi possível apagar o comentário.';
